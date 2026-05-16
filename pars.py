@@ -3,7 +3,6 @@ import os
 from typing import Any, Dict, List, Set, Tuple
 
 
-
 class Zone:
     def __init__(self, name: str, data: Dict):
         self.name = name
@@ -43,12 +42,14 @@ class Pars:
     def parse_config(filename: str) -> DroneNetwork:
 
         parsed_data = DroneNetwork()
+        dr_nb_finder = False
+        start_flage = 0
+        end_flage = 0
         
         try:
             with open(filename, 'r') as f:
                 for line_num, line in enumerate(f, start=1):
                     line = line.strip()
-                    
                     if not line or line.startswith('#'):
                         continue
                     
@@ -64,8 +65,21 @@ class Pars:
                         if int(value) < 0:
                             raise ValueError(f"Line {line_num}: nb_drones must be a positive integer.")
                         parsed_data.nb_drones = int(value)
-
+                        dr_nb_finder = True
+                        
+                    elif dr_nb_finder == False:
+                        raise ValueError(f"Line {line_num}: nb_drones must be at the top of the map.")
+                   
+                   
                     elif key in ["start_hub", "end_hub", "hub"]:
+                        if key == "start_hub":
+                            if start_flage == 1:
+                                raise ValueError(f"Line {line_num}: Multiple 'start_hub' zones defined.")
+                            start_flage = 1
+                        elif key == "end_hub":
+                            if end_flage == 1:
+                                raise ValueError(f"Line {line_num}: Multiple 'end_hub' zones defined.")
+                            end_flage = 1
                         core_str = value
                         meta_str = ""
                         if "[" in value and "]" in value:
@@ -93,7 +107,8 @@ class Pars:
                         
                         metadata = {}
                         if meta_str:
-                            meta_lst = meta_str.split(" ")
+                            meta_lst = meta_str.split()
+                            
                             for pair in meta_lst:
                                 if "=" not in pair:
                                     raise ValueError(f"Line {line_num}: Invalid metadata format '{pair}'.")
@@ -103,9 +118,10 @@ class Pars:
                         z_type = metadata.get("zone", "normal")
                         if z_type not in ["normal", "blocked", "restricted", "priority"]:
                                 raise ValueError(f"Line {line_num}: Invalid zone type '{z_type}'.")
-                            
+                        
+                        default_cap = 999 if key in ["start_hub", "end_hub"] else 1
                         try:
-                            max_drones = int(metadata.get("max_drones", 1))
+                            max_drones = int(metadata.get("max_drones", default_cap))
                             if max_drones <= 0:
                                 raise ValueError()
                         except ValueError:
@@ -121,7 +137,8 @@ class Pars:
                         }
                         new_zone = Zone(name, data_zone)
                         parsed_data.add_zone(new_zone)
-                        
+
+                    
                     elif key == "connection":
                         core_str = value
                         meta_str = ""
@@ -178,9 +195,18 @@ class Pars:
                         parsed_data.add_connection(new_conn)
                     else:
                         raise ValueError(f"Line {line_num}: Unknown prefix '{key}'.")
+                
+                
+                
+                if start_flage == 0:
+                    raise ValueError(f"ther is no start_hub :(")
+                elif end_flage == 0:
+                    raise ValueError(f"ther is no end_hub :(")
+             
                                                 
         except Exception as e:
-                print(f"WAAAAAAAA : {e}")
+                print(f"WAAAAAAAA : {e}", file=sys.stderr)
+                sys.exit(1)
     
         return parsed_data
 
@@ -190,8 +216,9 @@ class Pars:
 #     # print(f"{network.zones.items()}")
     
 #     i = int(network.nb_drones)
-#     zone = network.zones["hub"]
-#     print(zone.x)
+#     print(i)
+#     # zone = network.zones["hub"]
+#     # print(zone.x)
     
-#     conn = network.connections[1]
-#     print(conn.zone2)
+#     # conn = network.connections[0]
+#     # print(conn.zone2)

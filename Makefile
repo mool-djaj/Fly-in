@@ -1,6 +1,6 @@
 PYTHON = python3
-SCRIPT = 
-CONFIG = config.txt
+SCRIPT = fly_in.py
+CONFIG = cj.map
 
 install:
 	pip install -r requirements.txt
