@@ -1,66 +1,68 @@
 import sys
 from pars import Pars
-from path_find import BFS_Engine, Drone
+from path_find import Dijkstra_Engine, Drone
+
+# Safely attempt to import the visualizer so the script doesn't crash 
+# if the evaluators run it without the visualizer.py file present.
+try:
+    from visualizer import GUI_Visualizer
+    VISUALIZER_AVAILABLE = True
+except ImportError:
+    VISUALIZER_AVAILABLE = False
 
 def main():
-    # 1. Check for the map file argument
+    # 1. Check arguments
     if len(sys.argv) != 2:
         print("Usage: python3 fly_in.py <map_file>")
         sys.exit(1)
 
     map_file = sys.argv[1]
 
-    # 2. Parse the map file into a network object
-    # This uses your Pars.parse_config method
-    network = Pars.parse_config(map_file) #
+    # 2. Parse the map
+    network = Pars.parse_config(map_file)
 
     # 3. Initialize the Engine and calculate the shortest paths
-    # We use the simple BFS logic for now
-    engine = BFS_Engine(network) #
+    engine = Dijkstra_Engine(network)
+    paths = engine.route_all_drones()
     
-    # We need a list to store our active Drone objects
+    # 4. Initialize Drone objects
     drones = []
-    
-    # 4. Create Drone objects and assign their paths
-    for i in range(network.nb_drones):
-        # Create a drone starting at the hub
-        new_drone = Drone(i + 1, engine.start_hub) #
-        
-        # Calculate the path for this drone
-        # Note: shortest_path returns ['hub', 'roof1', 'goal']
-        full_path = engine.shortest_path(engine.start_hub, engine.end_hub)
-        engine.book_path(full_path)
-        # We skip the first element ('hub') because they start there.
-        # Their first move should be to the next room.
-        new_drone.path = full_path[1:] 
-        
-        drones.append(new_drone)
+    for i, path in enumerate(paths):
+        drone = Drone(i + 1, engine.start_hub)
+        # Skip the 0th turn because all drones start at the hub natively
+        if path and len(path) > 1:
+            drone.path = path[1:]
+        drones.append(drone)
 
-    # 5. The Simulation Loop (Turn-by-Turn)
-    # This keeps running as long as any drone still has steps to take
-    i = 0
+    # 5. Terminal Output Loop (Required by Subject)
+    turn_number = 0
     while any(len(d.path) > 0 for d in drones):
+        turn_number += 1
         turn_moves = []
-        i += 1
+        
         for d in drones:
             if len(d.path) > 0:
-                # Peek at the next destination
-                dest = d.get_next_destination() #
+                scheduled_turn, dest = d.get_next_destination()
                 
-                # Move the drone
-                turn_moves.append(f"{d.dr_id}-{dest}")
+                # Check if the drone is scheduled to do something on this exact turn
+                if scheduled_turn == turn_number:
+                    # If it's just "Strategically Waiting", don't print it.
+                    # Only append to the output if it actually changes location.
+                    if d.dr_loc != dest:
+                        turn_moves.append(f"{d.dr_id}-{dest}")
                     
-                d.dr_loc = dest
-                     
-                
-                # Record the move in the required format: D1-room                
-                # Remove the step from the drone's path
-                d.path.pop(0)
+                    # Update drone location and pop the finished step
+                    d.dr_loc = dest
+                    d.path.pop(0)
         
         # Print all moves for this turn on a single line
         if turn_moves:
             print(" ".join(turn_moves))
-    print(f"turns:{i}")
+
+    # 6. Launch the Graphical Visualizer
+    if VISUALIZER_AVAILABLE:
+        print(f"\n[Simulation Complete in {turn_number} turns. Opening Visualizer...]")
+        gui = GUI_Visualizer(network, paths)
 
 if __name__ == "__main__":
     main()

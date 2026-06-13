@@ -1,4 +1,5 @@
-from typing import List, Dict, Set
+import heapq
+from typing import List, Dict, Set, Tuple, Optional
 from pars import DroneNetwork
 
 class Drone:
@@ -6,86 +7,152 @@ class Drone:
         self.dr_id = f"D{dr_id}" 
         self.dr_loc = start_loc
         self.is_delivered = False
-        self.path: List[str] = []
+        # The path now stores tuples of (turn_number, location_name)
+        self.path: List[Tuple[int, str]] = []
         
-    def get_next_destination(self) -> str: 
+    def get_next_destination(self) -> Optional[Tuple[int, str]]: 
         """Looks at the very next step in the path without moving yet."""
         if len(self.path) > 0:
             return self.path[0]
         return None
 
-class BFS_Engine:
+
+class Dijkstra_Engine:
     def __init__(self, network: DroneNetwork):
         self.network = network
         self.start_hub = None
         self.end_hub = None
         
+        # 1. Identify start and end hubs
         for name, zone_obj in self.network.zones.items():
             if zone_obj.hub_role == "start_hub":
                 self.start_hub = name
             elif zone_obj.hub_role == "end_hub":
                 self.end_hub = name
                 
+        # 2. Build adjacency list for quick neighbor lookups
         self.graph: Dict[str, List[str]] = {name: [] for name in self.network.zones}
-        
         for conn in self.network.connections:
             self.graph[conn.zone1].append(conn.zone2)
             self.graph[conn.zone2].append(conn.zone1)
             
-        self.reservations = {name: {} for name in self.network.zones}
+        # 3. Time-Space Reservations
+        self.zone_res: Dict[str, Dict[int, int]] = {name: {} for name in self.network.zones}
+        self.link_res: Dict[Tuple[str, str], Dict[int, int]] = {}
+        self.link_capacity: Dict[Tuple[str, str], int] = {}
+        
+        # 4. Initialize link dictionaries
+        for conn in self.network.connections:
+            link = self.get_link_key(conn.zone1, conn.zone2)
+            self.link_res[link] = {}
+            self.link_capacity[link] = conn.max_link_capacity
 
-    def shortest_path(self, start_name: str, target_name: str) -> List[str]:
-        """Calculates the shortest route using a Queue-based BFS."""
+
+    def get_link_key(self, z1: str, z2: str) -> Tuple[str, str]:
+        """Helper to consistently get a unified dictionary key for bidirectional links."""
+        return tuple(sorted([z1, z2]))
+
+
+    def shortest_path(self, start_zone: str, target_zone: str, start_turn: int = 0) -> List[Tuple[int, str]]:
+        """Calculates the shortest route using Dijkstra's Algorithm to handle zone weights."""
         
-        queue = [(start_name, 0, [start_name])]
-        visited = {(start_name, 0)}
-        
-        while len(queue) > 0:
-            curr_zone, curr_turn, path = queue.pop(0)
+        # Queue stores: (Priority_Cost, Actual_Turn, Current_Zone, Path_History)
+        queue = [(0.0, start_turn, start_zone, [(start_turn, start_zone)])]
+        visited = {(start_zone, start_turn)}
+
+        while queue:
+            cost, curr_turn, curr_zone, path = heapq.heappop(queue)
             
-            if curr_zone == target_name:
+            if curr_zone == target_zone:
                 return path
-            next_turn = curr_turn + 1
             
-            prev_zone = path[-2] if len(path) >= 2 else None
+            # OPTION A: Strategic Waiting
+            wait_turn = curr_turn + 1
+            capacity = self.network.zones[curr_zone].max_drones
+            booked = self.zone_res[curr_zone].get(wait_turn, 0)
+
+            if booked < capacity or curr_zone in (self.start_hub, self.end_hub):
+                if (curr_zone, wait_turn) not in visited:
+                    visited.add((curr_zone, wait_turn))
+                    heapq.heappush(queue, (cost + 1.0, wait_turn, curr_zone, path + [(wait_turn, curr_zone)]))
             
-            # Priority 1: Rooms we haven't just visited
-            forward_rooms = [z for z in self.graph[curr_zone] if z != prev_zone]
-            # Priority 3: The room we just came from
-            backward_rooms = [z for z in self.graph[curr_zone] if z == prev_zone]
-            
-            # Order: Forward > Wait > Backward
-            movement_options = forward_rooms + [curr_zone] + backward_rooms
-            # Check all rooms connected to the current one
-            for next_zone in movement_options:
-                if (next_zone, next_turn) not in visited:
-                    booked = self.reservations[next_zone].get(next_turn, 0)
-                    capacity = self.network.zones[next_zone].max_drones
-                    
-                    if booked < capacity :
+            # OPTION B: Move to a neighbor
+            for next_zone in self.graph[curr_zone]:
+                zone_obj = self.network.zones[next_zone]
+                
+                if zone_obj.zone_type == "blocked":
+                    continue
+
+                # Check Link Capacity before moving
+                link_key = self.get_link_key(curr_zone, next_zone)
+                l_capacity = self.link_capacity[link_key]
+                l_booked = self.link_res[link_key].get(curr_turn + 1, 0) 
+                
+                if l_booked >= l_capacity:
+                    continue  # Connection is full, skip this option
+
+                # Calculate movement costs
+                turns_to_cross = 2 if zone_obj.zone_type == "restricted" else 1
+                next_turn = curr_turn + turns_to_cross
+                move_cost = 0.9 if zone_obj.zone_type == "priority" else turns_to_cross
+                new_cost = cost + move_cost
+
+                # Check Zone Capacity
+                z_capacity = zone_obj.max_drones
+                z_booked = self.zone_res[next_zone].get(next_turn, 0)
+                
+                if z_booked < z_capacity or next_zone == self.end_hub:
+                    if (next_zone, next_turn) not in visited:
                         visited.add((next_zone, next_turn))
-                        new_path = path + [next_zone]
-                        queue.append((next_zone, next_turn, new_path))
-                    
-        return [] # Return empty if no path exists
+                        
+                        new_path = list(path)
+                        
+                        # Handle restricted zones (requires 1 turn spent in transit on the connection)
+                        if turns_to_cross == 2:
+                            transit_turn = curr_turn + 1
+                            link_name = f"{curr_zone}-{next_zone}" 
+                            new_path.append((transit_turn, link_name))
+                            
+                        new_path.append((next_turn, next_zone))
+                        
+                        heapq.heappush(queue, (new_cost, next_turn, next_zone, new_path))
+                        
+        return []
 
-    def book_path(self, path: List[str]):
-        """Records the drone's schedule in the global reservation table."""
-        for turn, zone in enumerate(path):
-            # turn 0 is current position, turn 1 is first move, etc.
-            if turn not in self.reservations[zone]:
-                self.reservations[zone][turn] = 0
-            self.reservations[zone][turn] += 1
 
-    def route_all_drones(self) -> List[List[str]]:
-        """Finds the path for every drone defined in the map."""
+    def book_path(self, path: List[Tuple[int, str]]):
+        """Records the drone's schedule in the global reservation tables."""
+        for turn, location in path:
+            if "-" in location:
+                # It's a connection transit
+                z1, z2 = location.split("-")
+                link_key = self.get_link_key(z1, z2)
+                self.link_res[link_key][turn] = self.link_res[link_key].get(turn, 0) + 1
+            else:
+                # It's a standard zone
+                self.zone_res[location][turn] = self.zone_res[location].get(turn, 0) + 1
+
+
+    def route_all_drones(self) -> List[List[Tuple[int, str]]]:
+        """Finds and books the path for every drone defined in the map."""
         all_drone_paths = []
-        # Loop based on the nb_drones parsed from the map file
+        # Try scheduling drones with small staggered start offsets to reduce immediate
+        # congestion; for each drone, attempt start_turns 0..max_offset and pick the
+        # earliest path found.
+        max_offset = max(1, self.network.nb_drones // 2)
         for _ in range(self.network.nb_drones):
-            path = self.shortest_path(self.start_hub, self.end_hub)
-            
-            if path:
-                self.book_path(path)
-                all_drone_paths.append(path)
-            
+            chosen_path = []
+            for offset in range(0, max_offset + 1):
+                path = self.shortest_path(self.start_hub, self.end_hub, start_turn=offset)
+                if path:
+                    chosen_path = path
+                    break
+
+            if chosen_path:
+                self.book_path(chosen_path)
+                all_drone_paths.append(chosen_path)
+            else:
+                # No path found even after trying offsets; skip this drone.
+                pass
+                
         return all_drone_paths

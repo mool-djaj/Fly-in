@@ -8,6 +8,9 @@ install:
 run:
 	$(PYTHON) $(SCRIPT) $(CONFIG)
 
+test:
+	$(PYTHON) -m pytest -q
+
 debug:
 	$(PYTHON) -m pdb $(SCRIPT) $(CONFIG)
 
