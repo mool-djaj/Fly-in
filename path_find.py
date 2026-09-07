@@ -30,33 +30,29 @@ class AStar_Engine:
         self.start_hub: Optional[str] = None
         self.end_hub: Optional[str] = None
 
-        # 1. Identify start and end hubs
         for name, zone_obj in self.network.zones.items():
             if zone_obj.hub_role == "start_hub":
                 self.start_hub = name
             elif zone_obj.hub_role == "end_hub":
                 self.end_hub = name
 
-        # 2. Build adjacency list for quick neighbor lookups
         self.graph: dict[str, list[str]] = {name: [] for name in self.network.zones}
         for conn in self.network.connections:
             self.graph[conn.zone1].append(conn.zone2)
             self.graph[conn.zone2].append(conn.zone1)
 
-        # 3. Time-Space Reservations
         self.zone_res: dict[str, dict[int, int]] = {
             name: {} for name in self.network.zones
         }
         self.link_res: dict[tuple[str, str], dict[int, int]] = {}
         self.link_capacity: dict[tuple[str, str], int] = {}
 
-        # 4. Initialize link dictionaries
         for conn in self.network.connections:
             link = self.get_link_key(conn.zone1, conn.zone2)
             self.link_res[link] = {}
             self.link_capacity[link] = conn.max_link_capacity
 
-        # 5. Pre-compute A* Heuristics
+        # Pre-compute A* Heuristics
         self.heuristics = self._compute_heuristics()
 
     def _compute_heuristics(self) -> dict[str, float]:
@@ -189,7 +185,6 @@ class AStar_Engine:
                         visited.add((next_zone, next_turn))
                         new_path = list(path)
 
-                        # Handle restricted zones
                         if turns_to_cross == 2:
                             transit_turn = curr_turn + 1
                             link_name = f"{curr_zone}-{next_zone}"
@@ -208,15 +203,23 @@ class AStar_Engine:
         Args:
             path (list[tuple[int, str]]): A scheduled path of (turn, location) movements.
         """
+        if not path:
+            return
+        prev_lock = path[0][1]
+        
         for turn, location in path:
             if "-" in location:
-                # It's a connection transit
                 z1, z2 = location.split("-")
                 link_key = self.get_link_key(z1, z2)
                 self.link_res[link_key][turn] = self.link_res[link_key].get(turn, 0) + 1
             else:
-                # It's a standard zone
                 self.zone_res[location][turn] = self.zone_res[location].get(turn, 0) + 1
+                if location != prev_lock and "_" not in prev_lock:
+                    link_key = self.get_link_key(prev_lock, location)
+                    if link_key in self.link_res:
+                        self.link_res[link_key][turn] = self.link_res[link_key].get(turn, 0) + 1
+            prev_lock = location
+                    
 
     def route_all_drones(self) -> list[list[tuple[int, str]]]:
         """Find and book the path for every drone defined in the map.
@@ -229,7 +232,6 @@ class AStar_Engine:
         """
         all_drone_paths: list[list[tuple[int, str]]] = []
 
-        # Try staggered start offsets to reduce immediate congestion.
         max_offset = max(1, self.network.nb_drones // 2)
 
         for _ in range(self.network.nb_drones):

@@ -73,9 +73,9 @@ def main() -> int:
     except (FileNotFoundError, ValueError, OSError) as error:
         print(f"Error: {error}", file=sys.stderr)
         return 1
-    except Exception as error:
-        print(f"Unexpected error: {error}", file=sys.stderr)
-        return 1
+    # except Exception as error:
+    #     print(f"Unexpected error: {error}", file=sys.stderr)
+    #     return 1
 
 
 if __name__ == "__main__":

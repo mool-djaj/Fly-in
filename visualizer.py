@@ -70,7 +70,7 @@ class GUI_Visualizer:
         self.width = 1280
         self.height = 720
         self.screen = pygame.display.set_mode((self.width, self.height))
-        pygame.display.set_caption("Drone Logistics Simulator")
+        pygame.display.set_caption("Drone Simulator")
         self.clock = pygame.time.Clock()
         self.font = pygame.font.SysFont("Courier New", 14, bold=True)
         self.large_font = pygame.font.SysFont("Courier New", 20, bold=True)

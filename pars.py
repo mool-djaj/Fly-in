@@ -91,7 +91,6 @@ class DroneNetwork:
 
 
 class Pars:
-    """Parse a map file into a :class:`DroneNetwork` using strict pyparsing."""
 
     _safe_name_chars = "".join(c for c in pp.printables if c not in "-[]")
     _safe_val_chars = "".join(c for c in pp.printables if c not in "]")
@@ -132,19 +131,7 @@ class Pars:
 
     @staticmethod
     def parse_config(filename: str) -> DroneNetwork:
-        """Parse a map file into a network structure using pyparsing.
 
-        Args:
-            filename (str): Path to the map configuration file.
-
-        Returns:
-            DroneNetwork: Parsed network data structure.
-
-        Raises:
-            ValueError: If the file content violates grammar or constraints.
-            FileNotFoundError: If the file does not exist.
-            OSError: If the file cannot be opened.
-        """
         parsed_data = DroneNetwork()
         nb_drones_seen = False
         start_seen = False
