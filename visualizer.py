@@ -7,7 +7,12 @@ from pars import Connection, DroneNetwork, Zone, ZoneData
 class Particle:
     """Simple particle used for arrival effects."""
 
-    def __init__(self, x: float, y: float, color: tuple[int, int, int]) -> None:
+    def __init__(
+            self,
+            x: float,
+            y: float,
+            color: tuple[int, int, int]
+            ) -> None:
         self.x = x
         self.y = y
         self.color = color
@@ -33,7 +38,10 @@ class Particle:
         alpha = max(0, min(255, int(self.life)))
         color_with_alpha = (*self.color, alpha)
         diameter = int(self.size * 2)
-        particle_surface = pygame.Surface((diameter, diameter), pygame.SRCALPHA)
+        particle_surface = (
+            pygame.Surface((diameter, diameter),
+                           pygame.SRCALPHA)
+                           )
         pygame.draw.circle(
             particle_surface,
             color_with_alpha,
@@ -41,7 +49,8 @@ class Particle:
             int(self.size),
         )
         surface.blit(
-            particle_surface, (int(self.x - self.size), int(self.y - self.size))
+            particle_surface,
+            (int(self.x - self.size), int(self.y - self.size))
         )
 
 
@@ -67,7 +76,10 @@ class GUI_Visualizer:
         self.large_font = pygame.font.SysFont("Courier New", 20, bold=True)
 
         self.turn = 0
-        self.max_turn = max((path[-1][0] for path in self.paths if path), default=0)
+        self.max_turn = max(
+            (path[-1][0] for path in self.paths if path),
+            default=0
+            )
         self.is_playing = False
         self.turn_duration_ms = 800
         self.anim_progress = 0.0
@@ -136,7 +148,10 @@ class GUI_Visualizer:
         self.raw_drone_sprite = None
         for filename in filenames:
             try:
-                self.raw_drone_sprite = pygame.image.load(filename).convert_alpha()
+                self.raw_drone_sprite = (
+                    pygame.image.load(filename)
+                    .convert_alpha()
+                    )
                 break
             except FileNotFoundError:
                 continue
@@ -172,8 +187,14 @@ class GUI_Visualizer:
             self.height - 2 * self.base_pad - 150
         )
 
-        screen_x = (base_x - self.width / 2) * self.zoom + self.width / 2 + self.cam_x
-        screen_y = (base_y - self.height / 2) * self.zoom + self.height / 2 + self.cam_y
+        screen_x = (
+            (base_x - self.width / 2) *
+            self.zoom + self.width / 2 + self.cam_x
+            )
+        screen_y = (
+            (base_y - self.height / 2) *
+            self.zoom + self.height / 2 + self.cam_y
+            )
         return screen_x, screen_y
 
     def _get_world_pos(self, loc_str: str) -> tuple[float, float]:
@@ -227,7 +248,10 @@ class GUI_Visualizer:
             px = (star_x + self.cam_x * depth) % self.width
             py = (star_y + self.cam_y * depth) % self.height
             pygame.draw.circle(
-                self.screen, self.STAR_COLOR, (int(px), int(py)), max(1, int(2 * depth))
+                self.screen,
+                self.STAR_COLOR,
+                (int(px), int(py)),
+                max(1, int(2 * depth))
             )
 
         grid_size = int(60 * self.zoom)
@@ -249,7 +273,12 @@ class GUI_Visualizer:
         for connection in self.network.connections:
             x1, y1 = self._get_coords(connection.zone1)
             x2, y2 = self._get_coords(connection.zone2)
-            pygame.draw.aaline(self.screen, self.LINE_COLOR, (x1, y1), (x2, y2))
+            pygame.draw.aaline(
+                self.screen,
+                self.LINE_COLOR,
+                (x1, y1),
+                (x2, y2)
+                )
 
         for zone_name, zone in self.network.zones.items():
             x, y = self._get_coords(zone_name)
@@ -266,14 +295,20 @@ class GUI_Visualizer:
             if radius <= 5:
                 continue
 
-            glow_surface = pygame.Surface((radius * 3, radius * 3), pygame.SRCALPHA)
+            glow_surface = pygame.Surface(
+                (radius * 3, radius * 3),
+                pygame.SRCALPHA
+                )
             pygame.draw.circle(
                 glow_surface,
                 (*node_color, 30),
                 (radius * 1.5, radius * 1.5),
                 radius * 1.5,
             )
-            self.screen.blit(glow_surface, (x - radius * 1.5, y - radius * 1.5))
+            self.screen.blit(
+                glow_surface,
+                (x - radius * 1.5, y - radius * 1.5)
+                )
 
             outline_width = max(1, int(2 * self.zoom))
             pygame.draw.circle(
@@ -290,9 +325,19 @@ class GUI_Visualizer:
                 radius - outline_width,
             )
 
-            name_text = self.font.render(zone_name, True, self.TEXT_COLOR)
-            self.screen.blit(name_text, name_text.get_rect(center=(x, y - radius - 15)))
-            cap_text = self.font.render(f"C:{zone.max_drones}", True, node_color)
+            name_text = self.font.render(
+                zone_name,
+                True,
+                self.TEXT_COLOR
+                )
+            self.screen.blit(
+                name_text,
+                name_text.get_rect(center=(x, y - radius - 15))
+                )
+            cap_text = self.font.render(
+                f"C:{zone.max_drones}",
+                True, node_color
+                )
             self.screen.blit(cap_text, cap_text.get_rect(center=(x, y)))
 
     def _render_drones(self) -> None:
@@ -368,15 +413,25 @@ class GUI_Visualizer:
             else:
                 center = (int(x + offset_x), int(y + offset_y))
                 pygame.draw.circle(
-                    self.screen, (255, 255, 255), center, max(2, int(4 * self.zoom))
+                    self.screen,
+                    (255, 255, 255),
+                    center,
+                    max(2, int(4 * self.zoom))
                 )
                 pygame.draw.circle(
-                    self.screen, drone_color, center, max(3, int(7 * self.zoom)), 1
+                    self.screen,
+                    drone_color,
+                    center,
+                    max(3, int(7 * self.zoom)), 1
                 )
 
-            drone_text = self.font.render(f"D{drone_index + 1}", True, self.TEXT_COLOR)
+            drone_text = self.font.render(
+                f"D{drone_index + 1}",
+                True, self.TEXT_COLOR
+                )
             self.screen.blit(
-                drone_text, (x + offset_x - 10, y + offset_y - (25 * self.zoom))
+                drone_text,
+                (x + offset_x - 10, y + offset_y - (25 * self.zoom))
             )
 
             if (
@@ -402,7 +457,9 @@ class GUI_Visualizer:
         """Draw the heads-up display."""
 
         hud_surface = pygame.Surface((self.width, 100), pygame.SRCALPHA)
-        pygame.draw.rect(hud_surface, (10, 10, 15, 230), hud_surface.get_rect())
+        pygame.draw.rect(
+            hud_surface, (10, 10, 15, 230), hud_surface.get_rect()
+            )
         pygame.draw.line(hud_surface, (70, 70, 90), (0, 0), (self.width, 0), 2)
         self.screen.blit(hud_surface, (0, self.height - 100))
 
@@ -422,7 +479,10 @@ class GUI_Visualizer:
         bar_x = self.width // 2 - bar_width // 2
         bar_y = self.height - 60
         pygame.draw.rect(
-            self.screen, (30, 30, 40), (bar_x, bar_y, bar_width, 12), border_radius=6
+            self.screen,
+            (30, 30, 40),
+            (bar_x, bar_y, bar_width, 12),
+            border_radius=6
         )
 
         progress_ratio = (

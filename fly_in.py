@@ -1,7 +1,7 @@
 import sys
 from typing import Any
 from pars import Pars
-from path_find import Dijkstra_Engine, Drone
+from path_find import AStar_Engine, Drone
 
 
 GUI_Visualizer: Any = None
@@ -28,7 +28,7 @@ def main() -> int:
 
     try:
         network = Pars.parse_config(map_file)
-        engine = Dijkstra_Engine(network)
+        engine = AStar_Engine(network)
         paths = engine.route_all_drones()
 
         drones: list[Drone] = []
@@ -65,8 +65,9 @@ def main() -> int:
 
         if VISUALIZER_AVAILABLE and GUI_Visualizer is not None:
             print(
-                f"\n[Simulation Complete in {turn_number} turns. Opening Visualizer...]"
-            )
+                f"\n[Simulation Complete in {turn_number}"
+                " turns. Opening Visualizer...]"
+                )
             GUI_Visualizer(network, paths)
         return 0
     except (FileNotFoundError, ValueError, OSError) as error:

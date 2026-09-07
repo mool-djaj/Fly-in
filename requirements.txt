@@ -1,3 +1,4 @@
+pyparsing
 pytest
 mypy
 flake8
