@@ -20,20 +20,6 @@ class ConnectionData(TypedDict):
 
 
 class Zone:
-    """Represents a zone in the drone network.
-
-    Attributes:
-        name (str): The unique name of the zone (no dashes or spaces allowed).
-        hub_role (str): The role of the hub ('start_hub', 'end_hub', or 'hub').
-        x (int): The X coordinate.
-        y (int): The Y coordinate.
-        zone_type (str): Type of zone
-        ('normal', 'blocked', 'restricted', 'priority').
-        max_drones (int): The maximum number of drones this zone can hold.
-        color (str): Optional color metadata for visualizers.
-        current_drones (int):
-        Tracks the number of drones currently in the zone.
-    """
 
     def __init__(self, name: str, data: ZoneData) -> None:
         """Initialize a zone with its parsed data payload."""
@@ -48,15 +34,6 @@ class Zone:
 
 
 class Connection:
-    """Represents a connection between two zones.
-
-    Attributes:
-        zone1 (str): Name of the first connected zone.
-        zone2 (str): Name of the second connected zone.
-        max_link_capacity (int):
-        Max drones that can traverse this link simultaneously.
-        current_traffic (int): Tracks active traffic on the link.
-    """
 
     def __init__(self, data: ConnectionData) -> None:
         """Initialize a connection with its parsed data payload."""
@@ -67,13 +44,6 @@ class Connection:
 
 
 class DroneNetwork:
-    """Container for parsed zones and connections.
-
-    Attributes:
-        nb_drones (int): Total number of drones in the simulation.
-        zones (dict[str, Zone]): Dictionary mapping zone names to Zone objects.
-        connections (list[Connection]): List of all valid network connections.
-    """
 
     def __init__(self) -> None:
         """Initialize an empty drone network."""
@@ -236,19 +206,7 @@ class Pars:
         result: Any,
         parsed_data: DroneNetwork
     ) -> Zone:
-        """Map pyparsing results safely into a Zone object.
 
-        Args:
-            line_num (int)
-            : Current line number for error tracking.
-            result (Any): The ParseResults object from pyparsing.
-            parsed_data (DroneNetwork)
-            : The network object to validate duplicates against.
-
-        Returns:
-            Zone: A constructed Zone object.
-        """
-        
         name = result.name
         if name in parsed_data.zones:
             raise ValueError(f"Line {line_num}: Duplicate zone name '{name}'.")
@@ -293,17 +251,6 @@ class Pars:
         result: Any,
         parsed_data: DroneNetwork
     ) -> Connection:
-        """Map pyparsing results safely into a Connection object.
-
-        Args:
-            line_num (int): Current line number for error tracking.
-            result (Any): The ParseResults object from pyparsing.
-            parsed_data (DroneNetwork):
-            The network object to validate unknown zones against.
-
-        Returns:
-            Connection: A constructed Connection object.
-        """
         z1, z2 = result.z1, result.z2
 
         if z1 not in parsed_data.zones or z2 not in parsed_data.zones:

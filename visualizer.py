@@ -5,7 +5,6 @@ from pars import Connection, DroneNetwork, Zone, ZoneData
 
 
 class Particle:
-    """Simple particle used for arrival effects."""
 
     def __init__(
             self,
@@ -23,14 +22,12 @@ class Particle:
         self.size = random.uniform(2, 5)
 
     def update(self) -> None:
-        """Advance the particle by one frame."""
 
         self.x += self.vx
         self.y += self.vy
         self.life -= self.decay
 
     def draw(self, surface: pygame.Surface) -> None:
-        """Render the particle to a pygame surface."""
 
         if self.life <= 0:
             return
@@ -55,7 +52,6 @@ class Particle:
 
 
 class GUI_Visualizer:
-    """Interactive pygame visualizer for the drone simulation."""
 
     def __init__(
         self, network: DroneNetwork, all_paths: list[list[tuple[int, str]]]
@@ -138,7 +134,6 @@ class GUI_Visualizer:
             self.STAR_COLOR = (100, 100, 120)
 
     def _load_sprite(self, index: int) -> None:
-        """Load a drone sprite, falling back to the built-in circle marker."""
 
         self.current_sprite_index = index
         filenames = [f"graphics/drone{index}.png"]
@@ -160,7 +155,6 @@ class GUI_Visualizer:
         self.cached_sprite = None
 
     def _calculate_scale(self) -> None:
-        """Compute map bounds for screen placement."""
 
         if not self.network.zones:
             self.min_x = self.max_x = self.min_y = self.max_y = 0
@@ -174,7 +168,6 @@ class GUI_Visualizer:
         self.base_pad = 150
 
     def _get_coords(self, zone_name: str) -> tuple[float, float]:
-        """Convert a zone coordinate into screen coordinates."""
 
         zone = self.network.zones[zone_name]
         x_range = self.max_x - self.min_x or 1
@@ -198,7 +191,6 @@ class GUI_Visualizer:
         return screen_x, screen_y
 
     def _get_world_pos(self, loc_str: str) -> tuple[float, float]:
-        """Convert a zone or link label into a display position."""
 
         if "-" in loc_str:
             zone1, zone2 = loc_str.split("-")
@@ -208,14 +200,12 @@ class GUI_Visualizer:
         return self._get_coords(loc_str)
 
     def _lerp(self, start: float, end: float, t: float) -> float:
-        """Linearly interpolate between two values."""
 
         return start + (end - start) * t
 
     def _get_drone_pos(
         self, path: list[tuple[int, str]], exact_time: float
     ) -> tuple[float, float]:
-        """Return the interpolated drone position for a simulation time."""
 
         if not path:
             return 0.0, 0.0
@@ -241,7 +231,6 @@ class GUI_Visualizer:
         return self._get_world_pos(path[-1][1])
 
     def _draw_background(self) -> None:
-        """Draw the background, stars, and grid."""
 
         self.screen.fill(self.BG_COLOR)
         for star_x, star_y, depth in self.stars:
@@ -268,7 +257,6 @@ class GUI_Visualizer:
                 )
 
     def _draw_static_network(self) -> None:
-        """Draw the map network and zone labels."""
 
         for connection in self.network.connections:
             x1, y1 = self._get_coords(connection.zone1)
@@ -341,7 +329,6 @@ class GUI_Visualizer:
             self.screen.blit(cap_text, cap_text.get_rect(center=(x, y)))
 
     def _render_drones(self) -> None:
-        """Draw drones, trails, and end-of-route particles."""
 
         exact_time = self.turn + self.anim_progress
         for drone_index, path in enumerate(self.paths):
@@ -445,7 +432,6 @@ class GUI_Visualizer:
                     self.particles.append(Particle(end_x, end_y, drone_color))
 
     def _render_particles(self) -> None:
-        """Update and draw active particles."""
 
         for particle in reversed(self.particles):
             particle.update()
@@ -454,7 +440,6 @@ class GUI_Visualizer:
                 self.particles.remove(particle)
 
     def _draw_hud(self) -> None:
-        """Draw the heads-up display."""
 
         hud_surface = pygame.Surface((self.width, 100), pygame.SRCALPHA)
         pygame.draw.rect(
@@ -512,7 +497,6 @@ class GUI_Visualizer:
             )
 
     def _run(self) -> None:
-        """Run the event loop and ensure pygame shuts down cleanly."""
 
         running = True
         dt = 0.0

@@ -14,11 +14,6 @@ except ImportError:
 
 
 def main() -> int:
-    """Run the simulation from the command line.
-
-    Returns:
-        Process exit code.
-    """
 
     if len(sys.argv) != 2:
         print("Usage: python3 fly_in.py <map_file>")
