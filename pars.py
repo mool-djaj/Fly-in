@@ -248,6 +248,7 @@ class Pars:
         Returns:
             Zone: A constructed Zone object.
         """
+        
         name = result.name
         if name in parsed_data.zones:
             raise ValueError(f"Line {line_num}: Duplicate zone name '{name}'.")
@@ -261,22 +262,19 @@ class Pars:
                 ": Invalid zone type '{zone_type}'."
                 )
 
-        default_capacity = (
-            999 if result.role in {"start_hub", "end_hub"} else 1
-            )
-
-        try:
-            max_drones = int(meta.get("max_drones", default_capacity))
-        except ValueError as error:
-            raise ValueError(
-                f"Line {line_num}"
-                ": max_drones must be an integer."
+        if result.role in {"start_hub", "end_hub"}:
+            max_drones = 999
+        else:
+            try:
+                max_drones = int(meta.get("max_drones", 1))
+            except ValueError as error:
+                raise ValueError(
+                    f"Line {line_num}: max_drones must be an integer."
                 ) from error
-
-        if max_drones <= 0:
-            raise ValueError(
-                f"Line {line_num}"
-                ": max_drones must be a positive integer."
+            
+            if max_drones <= 0:
+                raise ValueError(
+                    f"Line {line_num}: max_drones must be a positive integer."
                 )
 
         data_zone: ZoneData = {

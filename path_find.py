@@ -18,14 +18,9 @@ class Drone:
 
 
 class AStar_Engine:
-    """Routes drones through the network using A* with time-space reservation constraints."""
 
     def __init__(self, network: DroneNetwork) -> None:
-        """Initialize the routing engine.
-
-        Args:
-            network (DroneNetwork): The parsed graph network containing zones and connections.
-        """
+        
         self.network = network
         self.start_hub: Optional[str] = None
         self.end_hub: Optional[str] = None
@@ -56,13 +51,7 @@ class AStar_Engine:
         self.heuristics = self._compute_heuristics()
 
     def _compute_heuristics(self) -> dict[str, float]:
-        """Compute the shortest topological distance from all zones to the end_hub.
-        
-        This provides an admissible heuristic for A* pathfinding.
 
-        Returns:
-            dict[str, float]: A dictionary mapping zone names to their heuristic cost to the goal.
-        """
         heuristics: dict[str, float] = {zone: float("inf") for zone in self.network.zones}
         if not self.end_hub:
             return heuristics
@@ -79,8 +68,12 @@ class AStar_Engine:
             for neighbor in self.graph[curr_zone]:
                 zone_obj = self.network.zones[curr_zone]
                 
-                # Assume minimum possible cost to remain admissible
-                move_cost = 0.9 if zone_obj.zone_type == "priority" else 1.0
+                if zone_obj.zone_type == "priority":
+                    move_cost = 0.9
+                elif zone_obj.zone_type == "restricted":
+                    move_cost = 2.0
+                else:
+                    move_cost = 1.0
                 new_dist = current_dist + move_cost
                 
                 if new_dist < heuristics[neighbor]:
@@ -104,27 +97,18 @@ class AStar_Engine:
     def shortest_path(
         self, start_zone: str, target_zone: str, start_turn: int = 0
     ) -> list[tuple[int, str]]:
-        """Calculate the shortest route using A* while respecting capacity reservations.
 
-        Args:
-            start_zone (str): The starting zone name.
-            target_zone (str): The destination zone name.
-            start_turn (int): The turn number the drone begins its journey.
-
-        Returns:
-            list[tuple[int, str]]: A schedule of (turn, location) tuples representing the path.
-        """
         # Queue stores: (f_score, g_cost, actual_turn, current_zone, path_history)
         initial_f = self.heuristics.get(start_zone, 0.0)
         queue: list[tuple[float, float, int, str, list[tuple[int, str]]]] = [
             (initial_f, 0.0, start_turn, start_zone, [(start_turn, start_zone)])
         ]
         visited = {(start_zone, start_turn)}
-        
-        # Escape hatch to prevent infinite waiting loops
+
         max_turn_limit = 1000
 
         while queue:
+
             f_score, cost, curr_turn, curr_zone, path = heapq.heappop(queue)
 
             if curr_zone == target_zone:
@@ -214,12 +198,12 @@ class AStar_Engine:
                 self.link_res[link_key][turn] = self.link_res[link_key].get(turn, 0) + 1
             else:
                 self.zone_res[location][turn] = self.zone_res[location].get(turn, 0) + 1
-                if location != prev_lock and "_" not in prev_lock:
+                if location != prev_lock and "-" not in prev_lock:
                     link_key = self.get_link_key(prev_lock, location)
                     if link_key in self.link_res:
                         self.link_res[link_key][turn] = self.link_res[link_key].get(turn, 0) + 1
             prev_lock = location
-                    
+
 
     def route_all_drones(self) -> list[list[tuple[int, str]]]:
         """Find and book the path for every drone defined in the map.
