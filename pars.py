@@ -22,7 +22,6 @@ class ConnectionData(TypedDict):
 class Zone:
 
     def __init__(self, name: str, data: ZoneData) -> None:
-        """Initialize a zone with its parsed data payload."""
         self.name: str = name
         self.hub_role: str = data["hub_role"]
         self.x: int = data["x"]
@@ -36,7 +35,6 @@ class Zone:
 class Connection:
 
     def __init__(self, data: ConnectionData) -> None:
-        """Initialize a connection with its parsed data payload."""
         self.zone1: str = data["zone1"]
         self.zone2: str = data["zone2"]
         self.max_link_capacity: int = data["max_link_capacity"]
@@ -46,40 +44,38 @@ class Connection:
 class DroneNetwork:
 
     def __init__(self) -> None:
-        """Initialize an empty drone network."""
         self.nb_drones: int = 0
         self.zones: dict[str, Zone] = {}
         self.connections: list[Connection] = []
 
     def add_zone(self, zone: Zone) -> None:
-        """Add a parsed zone to the network."""
         self.zones[zone.name] = zone
 
     def add_connection(self, connection: Connection) -> None:
-        """Add a parsed connection to the network."""
         self.connections.append(connection)
 
 
 class Pars:
 
-    _safe_name_chars = "".join(c for c in pp.printables if c not in "-[]")
-    _safe_val_chars = "".join(c for c in pp.printables if c not in "]")
     _integer = (
         pp.Combine(pp.Optional("-") + pp.Word(pp.nums))
         .set_parse_action(lambda t: int(t[0]))
     )
-    _name = pp.Word(_safe_name_chars)
+    
+    _name = pp.Word(pp.alphanums + "_")
     _meta_key = pp.Word(pp.alphanums + "_")
-    _meta_value = pp.Word(_safe_val_chars)
+    _meta_value = pp.Word(pp.alphanums + "_")
+    
     _meta_pair = pp.Group(_meta_key + pp.Suppress("=") + _meta_value)
     _metadata = (
         pp.Suppress("[") + pp.Dict(pp.ZeroOrMore(_meta_pair))("meta") +
         pp.Suppress("]")
-        )
+    )
+    
     _nb_drones_rule = (
         pp.CaselessKeyword("nb_drones") +
         pp.Suppress(":") + _integer("count")
-        )
+    )
 
     _zone_rule = (
         pp.Word(pp.alphanums + "_")("role")
@@ -121,12 +117,12 @@ class Pars:
                         result = (
                             Pars._nb_drones_rule
                             .parse_string(line, parse_all=True)
-                            )
+                        )
                         if result.count < 0:
                             raise ValueError(
                                 f"Line {line_num}"
                                 ":nb_drones must be a positive integer."
-                                )
+                            )
                         parsed_data.nb_drones = result.count
                         nb_drones_seen = True
                         continue
@@ -134,17 +130,18 @@ class Pars:
                     if not nb_drones_seen:
                         raise ValueError(
                             f"Line {line_num}:"
-                            " nb_drones must be at the top of the map.")
+                            " nb_drones must be at the top of the map."
+                        )
 
                     if line.lower().startswith("connection:"):
                         result = (
                             Pars._conn_rule
                             .parse_string(line, parse_all=True)
-                            )
+                        )
                         parsed_data.add_connection(
                             Pars._build_connection(
                                 line_num, result, parsed_data
-                                )
+                            )
                         )
                         continue
 
@@ -152,46 +149,46 @@ class Pars:
                         result = (
                             Pars._zone_rule
                             .parse_string(line, parse_all=True)
-                            )
+                        )
 
                         role = result.role.lower()
                         if role not in {"start_hub", "end_hub", "hub"}:
                             raise ValueError(
                                 f"Line {line_num}"
                                 ": Unknown prefix '{role}'."
-                                )
+                            )
 
                         if role == "start_hub":
                             if start_seen:
                                 raise ValueError(
                                     f"Line {line_num}"
                                     ": Multiple 'start_hub' zones defined."
-                                    )
+                                )
                             start_seen = True
                         elif role == "end_hub":
                             if end_seen:
                                 raise ValueError(
                                     f"Line {line_num}"
                                     ": Multiple 'end_hub' zones defined."
-                                    )
+                                )
                             end_seen = True
 
                         parsed_data.add_zone(
                             Pars._build_zone(line_num, result, parsed_data)
-                            )
+                        )
                         continue
 
                     raise ValueError(
                         f"Line {line_num}"
                         ": Invalid format, missing ':'."
-                        )
+                    )
 
                 except pp.ParseException as error:
                     raise ValueError(
                         f"Line {line_num}"
                         ": Syntax error -> "
                         "{error.msg}\nContent: '{line}'"
-                        ) from error
+                    ) from error
 
         if not start_seen:
             raise ValueError("Map is missing a 'start_hub'.")
@@ -218,7 +215,7 @@ class Pars:
             raise ValueError(
                 f"Line {line_num}"
                 ": Invalid zone type '{zone_type}'."
-                )
+            )
 
         if result.role in {"start_hub", "end_hub"}:
             max_drones = 999
@@ -257,20 +254,20 @@ class Pars:
             raise ValueError(
                 f"Line {line_num}"
                 ": Connection references unknown zone(s)."
-                )
+            )
 
         if z1 == z2:
             raise ValueError(
                 f"Line {line_num}"
                 ": A zone cannot connect to itself '{z1}-{z2}'."
-                )
+            )
 
         for existing in parsed_data.connections:
             if {existing.zone1, existing.zone2} == {z1, z2}:
                 raise ValueError(
                     f"Line {line_num}"
                     ": Duplicate connection detected '{z1}-{z2}'."
-                    )
+                )
 
         meta = result.meta.as_dict() if "meta" in result else {}
 
@@ -280,13 +277,13 @@ class Pars:
             raise ValueError(
                 f"Line {line_num}"
                 ": max_link_capacity must be an integer."
-                ) from error
+            ) from error
 
         if link_capacity <= 0:
             raise ValueError(
                 f"Line {line_num}"
                 ": max_link_capacity must be a positive integer."
-                )
+            )
 
         data_conn: ConnectionData = {
             "zone1": z1,

@@ -22,6 +22,7 @@ class AStar_Engine:
     def __init__(self, network: DroneNetwork) -> None:
         
         self.network = network
+        self.nodes_checked = 0
         self.start_hub: Optional[str] = None
         self.end_hub: Optional[str] = None
 
@@ -49,6 +50,23 @@ class AStar_Engine:
 
         self.heuristics = self._compute_heuristics()
 
+    def get_move_cost(self, zone_type: str) -> float:
+
+        if zone_type == "priority":
+            return 0.9
+        if zone_type == "restricted":
+            return 2.0
+        return 1.0
+    
+    def is_valid_move(self, zone: str, turn: int, visited: set) -> bool:
+
+        if (zone, turn) in visited:
+            return False
+
+        capacity = self.network.zones[zone].max_drones
+        booked = self.zone_res[zone].get(turn, 0)
+        return booked < capacity or zone in (self.start_hub, self.end_hub)
+
     def _compute_heuristics(self) -> dict[str, float]:
 
         heuristics: dict[str, float] = {zone: float("inf") for zone in self.network.zones}
@@ -60,19 +78,14 @@ class AStar_Engine:
 
         while queue:
             current_dist, curr_zone = heapq.heappop(queue)
-
             if current_dist > heuristics[curr_zone]:
                 continue
 
             for neighbor in self.graph[curr_zone]:
+
                 zone_obj = self.network.zones[curr_zone]
-                
-                if zone_obj.zone_type == "priority":
-                    move_cost = 0.9
-                elif zone_obj.zone_type == "restricted":
-                    move_cost = 2.0
-                else:
-                    move_cost = 1.0
+
+                move_cost = self.get_move_cost(zone_obj.zone_type)
                 new_dist = current_dist + move_cost
                 
                 if new_dist < heuristics[neighbor]:
@@ -85,6 +98,8 @@ class AStar_Engine:
 
         return (z1, z2) if z1 <= z2 else (z2, z1)
 
+
+
     def shortest_path(
         self, start_zone: str, target_zone: str, start_turn: int = 0
     ) -> list[tuple[int, str]]:
@@ -95,10 +110,10 @@ class AStar_Engine:
         ]
         visited = {(start_zone, start_turn)}
 
-        max_turn_limit = 1000
+        max_turn_limit = 10000
 
         while queue:
-
+            self.nodes_checked += 1
             f_score, cost, curr_turn, curr_zone, path = heapq.heappop(queue)
 
             if curr_zone == target_zone:
@@ -108,16 +123,12 @@ class AStar_Engine:
                 continue
 
             wait_turn = curr_turn + 1
-            capacity = self.network.zones[curr_zone].max_drones
-            booked = self.zone_res[curr_zone].get(wait_turn, 0)
-
-            if booked < capacity or curr_zone in (self.start_hub, self.end_hub):
-                if (curr_zone, wait_turn) not in visited:
-                    visited.add((curr_zone, wait_turn))
-                    new_cost = cost + 1.0
-                    new_f = new_cost + self.heuristics.get(curr_zone, 0.0)
-                    heapq.heappush(
-                        queue,
+            if self.is_valid_move(curr_zone, wait_turn, visited):
+                visited.add((curr_zone, wait_turn))
+                new_cost = cost + 1.0
+                new_f = new_cost + self.heuristics.get(curr_zone, 0.0)
+                heapq.heappush(
+                    queue,
                         (
                             new_f,
                             new_cost,
@@ -139,17 +150,13 @@ class AStar_Engine:
 
                 if l_booked >= l_capacity:
                     continue
-                turns_to_cross = 2 if zone_obj.zone_type == "restricted" else 1
+                turns_to_cross = 2 if zone_obj.zone_type == "restricted" else 1                
                 next_turn = curr_turn + turns_to_cross
-                move_cost = 0.9 if zone_obj.zone_type == "priority" else turns_to_cross
+                move_cost = self.get_move_cost(zone_obj.zone_type)
                 new_cost = cost + move_cost
                 new_f = new_cost + self.heuristics.get(next_zone, 0.0)
 
-                z_capacity = zone_obj.max_drones
-                z_booked = self.zone_res[next_zone].get(next_turn, 0)
-
-                if z_booked < z_capacity or next_zone == self.end_hub:
-                    if (next_zone, next_turn) not in visited:
+                if self.is_valid_move(next_zone, next_turn, visited):
                         visited.add((next_zone, next_turn))
                         new_path = list(path)
 
@@ -162,6 +169,7 @@ class AStar_Engine:
                         heapq.heappush(
                             queue, (new_f, new_cost, next_turn, next_zone, new_path)
                         )
+
 
         return []
 
