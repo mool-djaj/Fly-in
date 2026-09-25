@@ -1,293 +1,141 @@
-from typing import Any, TypedDict
+import sys
+from typing import Dict, List, Set
 import pyparsing as pp
 
-
-class ZoneData(TypedDict):
-
-    hub_role: str
-    x: int
-    y: int
-    zone_type: str
-    max_drones: int
-    color: str
-
-
-class ConnectionData(TypedDict):
-
-    zone1: str
-    zone2: str
-    max_link_capacity: int
-
+# Clear type aliases for readability
+ZoneDict = Dict[str, 'Zone']
+ConnectionList = List['Connection']
 
 class Zone:
+    def __init__(self, name: str, x: int, y: int, max_drones: int, color: str) -> None:
+        self.name = name
+        self.x = x
+        self.y = y
+        self.max_drones = max_drones
+        self.color = color
+        
+        # Attributes required by path_find.py
+        self.zone_type = "normal"
+        self.hub_role = None
 
-    def __init__(self, name: str, data: ZoneData) -> None:
-        self.name: str = name
-        self.hub_role: str = data["hub_role"]
-        self.x: int = data["x"]
-        self.y: int = data["y"]
-        self.zone_type: str = data["zone_type"]
-        self.max_drones: int = data["max_drones"]
-        self.color: str = data["color"]
-        self.current_drones: int = 0
-
+        # Assign mechanics based on mapping rules
+        if self.color == "green":
+            self.hub_role = "start_hub"
+            self.max_drones = 9999  # Hubs have infinite capacity
+        elif self.color == "red":
+            self.hub_role = "end_hub"
+            self.max_drones = 9999
+        elif self.color == "yellow":
+            self.zone_type = "restricted"
+        elif self.color == "gray":
+            self.zone_type = "blocked"
 
 class Connection:
-
-    def __init__(self, data: ConnectionData) -> None:
-        self.zone1: str = data["zone1"]
-        self.zone2: str = data["zone2"]
-        self.max_link_capacity: int = data["max_link_capacity"]
-        self.current_traffic: int = 0
-
+    def __init__(self, zone1: str, zone2: str) -> None:
+        self.zone1 = zone1
+        self.zone2 = zone2
+        self.max_link_capacity = 1  # Required by path_find.py
 
 class DroneNetwork:
-
     def __init__(self) -> None:
         self.nb_drones: int = 0
-        self.zones: dict[str, Zone] = {}
-        self.connections: list[Connection] = []
+        self.zones: ZoneDict = {}
+        self.connections: ConnectionList = []
 
-    def add_zone(self, zone: Zone) -> None:
-        self.zones[zone.name] = zone
+def parse_network(filepath: str) -> DroneNetwork:
+    network = DroneNetwork()
+    valid_colors: Set[str] = {"red", "blue", "green", "yellow", "gray", "none"}
 
-    def add_connection(self, connection: Connection) -> None:
-        self.connections.append(connection)
-
-
-class Pars:
-
-    _integer = (
-        pp.Combine(pp.Optional("-") + pp.Word(pp.nums))
-        .set_parse_action(lambda t: int(t[0]))
-    )
+    # --- ADVANCED PYPARSING GRAMMAR ---
+    integer = pp.Word(pp.nums)
+    name_str = pp.Word(pp.alphanums + "_") # Zone names (no hyphens to avoid link conflicts)
+    color_str = pp.Word(pp.alphas)
+    colon = pp.Suppress(pp.Optional(":"))
     
-    _name = pp.Word(pp.alphanums + "_")
-    _meta_key = pp.Word(pp.alphanums + "_")
-    _meta_value = pp.Word(pp.alphanums + "_")
+    # Drones (Handles "nb_drones: 2" or "drones 2")
+    prefix_drones = pp.Suppress((pp.CaselessKeyword("nb_drones") | pp.CaselessKeyword("drones")) + colon)
+    line_drones = prefix_drones + integer("count")
     
-    _meta_pair = pp.Group(_meta_key + pp.Suppress("=") + _meta_value)
-    _metadata = (
-        pp.Suppress("[") + pp.Dict(pp.ZeroOrMore(_meta_pair))("meta") +
-        pp.Suppress("]")
-    )
+    # Connections (Handles "link: A-B" or "connection A B")
+    prefix_conn = pp.Suppress((pp.CaselessKeyword("connection") | pp.CaselessKeyword("link")) + colon)
+    line_conn = prefix_conn + name_str("z1") + pp.Suppress(pp.Optional("-")) + name_str("z2")
     
-    _nb_drones_rule = (
-        pp.CaselessKeyword("nb_drones") +
-        pp.Suppress(":") + _integer("count")
-    )
+    # Zones (Handles "start_hub: start 0 0 [color=green]" AND "zone: A 5 5 2 [color=yellow]")
+    zone_prefix = pp.Suppress(pp.Optional((pp.CaselessKeyword("start_hub") | pp.CaselessKeyword("end_hub") | pp.CaselessKeyword("zone")) + colon))
+    capacity_expr = pp.Optional(integer("capacity"), default=9999) # Defaults to 9999 if missing
+    
+    # Safely strips away "[", "color", "=", and "]" if they exist
+    color_expr = pp.Suppress(pp.Optional("[")) + pp.Suppress(pp.Optional(pp.CaselessKeyword("color") + pp.Optional("="))) + color_str("color") + pp.Suppress(pp.Optional("]"))
+    
+    line_zone = zone_prefix + name_str("name") + integer("x") + integer("y") + capacity_expr + color_expr
 
-    _zone_rule = (
-        pp.Word(pp.alphanums + "_")("role")
-        + pp.Suppress(":")
-        + _name("name")
-        + _integer("x")
-        + _integer("y")
-        + pp.Optional(_metadata)
-    )
+    # 1. File I/O
+    try:
+        with open(filepath, 'r') as file:
+            lines = file.readlines()
+    except FileNotFoundError:
+        print(f"Error: Cannot open map file '{filepath}'")
+        sys.exit(1)
 
-    _conn_rule = (
-        pp.CaselessKeyword("connection")
-        + pp.Suppress(":")
-        + _name("z1")
-        + pp.Suppress("-")
-        + _name("z2")
-        + pp.Optional(_metadata)
-    )
+    # 2. Parsing Loop
+    for raw_line in lines:
+        line = raw_line.strip()
+        
+        # Skip empty lines and C-style comments
+        if len(line) == 0 or line.startswith("#") or line.startswith("//"):
+            continue
 
-    @staticmethod
-    def parse_config(filename: str) -> DroneNetwork:
+        lower_line = line.lower()
 
-        parsed_data = DroneNetwork()
-        nb_drones_seen = False
-        start_seen = False
-        end_seen = False
-
-        with open(filename, "r", encoding="utf-8") as file_handle:
-            for line_num, raw_line in enumerate(file_handle, start=1):
-                line = raw_line.strip()
-                if "#" in line:
-                    line = line.split("#", 1)[0].strip()
-
-                if not line:
-                    continue
-
-                try:
-                    if line.lower().startswith("nb_drones:"):
-                        result = (
-                            Pars._nb_drones_rule
-                            .parse_string(line, parse_all=True)
-                        )
-                        if result.count < 0:
-                            raise ValueError(
-                                f"Line {line_num}"
-                                ":nb_drones must be a positive integer."
-                            )
-                        parsed_data.nb_drones = result.count
-                        nb_drones_seen = True
-                        continue
-
-                    if not nb_drones_seen:
-                        raise ValueError(
-                            f"Line {line_num}:"
-                            " nb_drones must be at the top of the map."
-                        )
-
-                    if line.lower().startswith("connection:"):
-                        result = (
-                            Pars._conn_rule
-                            .parse_string(line, parse_all=True)
-                        )
-                        parsed_data.add_connection(
-                            Pars._build_connection(
-                                line_num, result, parsed_data
-                            )
-                        )
-                        continue
-
-                    if ":" in line:
-                        result = (
-                            Pars._zone_rule
-                            .parse_string(line, parse_all=True)
-                        )
-
-                        role = result.role.lower()
-                        if role not in {"start_hub", "end_hub", "hub"}:
-                            raise ValueError(
-                                f"Line {line_num}"
-                                ": Unknown prefix '{role}'."
-                            )
-
-                        if role == "start_hub":
-                            if start_seen:
-                                raise ValueError(
-                                    f"Line {line_num}"
-                                    ": Multiple 'start_hub' zones defined."
-                                )
-                            start_seen = True
-                        elif role == "end_hub":
-                            if end_seen:
-                                raise ValueError(
-                                    f"Line {line_num}"
-                                    ": Multiple 'end_hub' zones defined."
-                                )
-                            end_seen = True
-
-                        parsed_data.add_zone(
-                            Pars._build_zone(line_num, result, parsed_data)
-                        )
-                        continue
-
-                    raise ValueError(
-                        f"Line {line_num}"
-                        ": Invalid format, missing ':'."
-                    )
-
-                except pp.ParseException as error:
-                    raise ValueError(
-                        f"Line {line_num}"
-                        ": Syntax error -> "
-                        "{error.msg}\nContent: '{line}'"
-                    ) from error
-
-        if not start_seen:
-            raise ValueError("Map is missing a 'start_hub'.")
-        if not end_seen:
-            raise ValueError("Map is missing an 'end_hub'.")
-
-        return parsed_data
-
-    @staticmethod
-    def _build_zone(
-        line_num: int,
-        result: Any,
-        parsed_data: DroneNetwork
-    ) -> Zone:
-
-        name = result.name
-        if name in parsed_data.zones:
-            raise ValueError(f"Line {line_num}: Duplicate zone name '{name}'.")
-
-        meta = result.meta.as_dict() if "meta" in result else {}
-
-        zone_type = meta.get("zone", "normal")
-        if zone_type not in {"normal", "blocked", "restricted", "priority"}:
-            raise ValueError(
-                f"Line {line_num}"
-                ": Invalid zone type '{zone_type}'."
-            )
-
-        if result.role in {"start_hub", "end_hub"}:
-            max_drones = 999
+        if lower_line.startswith("nb_drones") or lower_line.startswith("drones"):
+            try:
+                parsed = line_drones.parse_string(line, parse_all=True)
+                network.nb_drones = int(parsed.count)
+            except pp.ParseException:
+                print(f"Syntax Error in drones definition: {line}")
+                sys.exit(1)
+        
+        elif lower_line.startswith("connection") or lower_line.startswith("link"):
+            try:
+                parsed = line_conn.parse_string(line, parse_all=True)
+                z1, z2 = parsed.z1, parsed.z2
+                
+                if z1 not in network.zones or z2 not in network.zones:
+                    print(f"Error: Zones '{z1}' or '{z2}' not defined before linking.")
+                    sys.exit(1)
+                    
+                network.connections.append(Connection(z1, z2))
+            except pp.ParseException:
+                print(f"Syntax Error in connection definition: {line}")
+                sys.exit(1)
+        
         else:
             try:
-                max_drones = int(meta.get("max_drones", 1))
-            except ValueError as error:
-                raise ValueError(
-                    f"Line {line_num}: max_drones must be an integer."
-                ) from error
-            
-            if max_drones <= 0:
-                raise ValueError(
-                    f"Line {line_num}: max_drones must be a positive integer."
-                )
+                parsed = line_zone.parse_string(line, parse_all=True)
+                name = parsed.name
+                x, y = int(parsed.x), int(parsed.y)
+                capacity = int(parsed.capacity)
+                color = parsed.color.lower()
 
-        data_zone: ZoneData = {
-            "hub_role": result.role,
-            "x": result.x,
-            "y": result.y,
-            "zone_type": zone_type,
-            "color": meta.get("color", "none"),
-            "max_drones": max_drones,
-        }
-        return Zone(name, data_zone)
+                if color not in valid_colors:
+                    print(f"Error: Invalid color '{color}' in zone '{name}'.")
+                    sys.exit(1)
+                    
+                if name in network.zones:
+                    print(f"Error: Duplicate zone '{name}' found.")
+                    sys.exit(1)
 
-    @staticmethod
-    def _build_connection(
-        line_num: int,
-        result: Any,
-        parsed_data: DroneNetwork
-    ) -> Connection:
-        z1, z2 = result.z1, result.z2
+                network.zones[name] = Zone(name, x, y, capacity, color)
+            except pp.ParseException:
+                print(f"Syntax Error in zone definition: {line}")
+                sys.exit(1)
 
-        if z1 not in parsed_data.zones or z2 not in parsed_data.zones:
-            raise ValueError(
-                f"Line {line_num}"
-                ": Connection references unknown zone(s)."
-            )
+    # 3. Final Integrity Checks
+    if network.nb_drones == 0:
+        print("Error: No drones configured.")
+        sys.exit(1)
+    if len(network.zones) < 2:
+        print("Error: Map must contain at least two zones.")
+        sys.exit(1)
 
-        if z1 == z2:
-            raise ValueError(
-                f"Line {line_num}"
-                ": A zone cannot connect to itself '{z1}-{z2}'."
-            )
-
-        for existing in parsed_data.connections:
-            if {existing.zone1, existing.zone2} == {z1, z2}:
-                raise ValueError(
-                    f"Line {line_num}"
-                    ": Duplicate connection detected '{z1}-{z2}'."
-                )
-
-        meta = result.meta.as_dict() if "meta" in result else {}
-
-        try:
-            link_capacity = int(meta.get("max_link_capacity", 1))
-        except ValueError as error:
-            raise ValueError(
-                f"Line {line_num}"
-                ": max_link_capacity must be an integer."
-            ) from error
-
-        if link_capacity <= 0:
-            raise ValueError(
-                f"Line {line_num}"
-                ": max_link_capacity must be a positive integer."
-            )
-
-        data_conn: ConnectionData = {
-            "zone1": z1,
-            "zone2": z2,
-            "max_link_capacity": link_capacity,
-        }
-        return Connection(data_conn)
+    return network
