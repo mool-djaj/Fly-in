@@ -1,6 +1,6 @@
 PYTHON = python3
 SCRIPT = fly_in.py
-CONFIG = cj.map
+CONFIG = ./maps/easy/01_linear_path.txt
 
 install:
 	pip install -r requirements.txt

@@ -92,6 +92,11 @@ class GUI_Visualizer:
             color_map = {
                 "red": (255, 70, 70), "blue": (70, 130, 255), "green": (70, 255, 70),
                 "yellow": (255, 230, 70), "gray": (120, 120, 130), "none": (180, 180, 190),
+                # Challenger Map Colors
+                "purple": (180, 80, 255), "black": (50, 50, 60), "brown": (150, 100, 60),
+                "maroon": (140, 30, 60), "orange": (255, 150, 50), "gold": (255, 215, 0),
+                "darkred": (120, 0, 0), "violet": (200, 130, 255), "crimson": (220, 20, 60),
+                "rainbow": (0, 255, 255)
             }
             node_color = color_map.get(zone.color.lower(), (180, 180, 190))
             
