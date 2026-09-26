@@ -34,20 +34,22 @@ class DroneNetwork:
 def parse_network(filepath: str) -> DroneNetwork:
     network = DroneNetwork()
 
-    # --- PYPARSING GRAMMAR ---
-    integer = pp.Combine(pp.Optional('-') + pp.Word(pp.nums)).set_parse_action(lambda t: int(t[0]))
+    integer = pp.Regex(r"[+-]*\d+").set_parse_action(
+        lambda t: ((-1) ** t[0].count('-')) * int(t[0].lstrip('+-'))
+    )
+    
+
     name_str = pp.Word(pp.printables, excludeChars="-:=[]") 
     colon = pp.Suppress(pp.Optional(":"))
     
     attr_key = pp.Word(pp.alphas + "_")
-    attr_val = pp.Word(pp.alphanums + "_-")
+    attr_val = pp.Word(pp.alphanums + "_-+")
     attr_pair = pp.Group(attr_key + pp.Suppress("=") + attr_val)
     attrs_dict = pp.Dict(pp.ZeroOrMore(attr_pair))
     opt_brackets = pp.Optional(pp.Suppress("[") + attrs_dict("attrs") + pp.Suppress("]"))
 
     drones_prefix = pp.CaselessKeyword("nb_drones") | pp.CaselessKeyword("drones")
     rule_drones = drones_prefix + colon + integer("count")
-
     conn_prefix = pp.CaselessKeyword("connection") | pp.CaselessKeyword("link")
     rule_conn = conn_prefix + colon + name_str("z1") + pp.Suppress("-") + name_str("z2") + opt_brackets
 
@@ -56,7 +58,6 @@ def parse_network(filepath: str) -> DroneNetwork:
 
     valid_zone_types: Set[str] = {"normal", "blocked", "restricted", "priority"}
 
-    # --- FILE PARSING ---
     try:
         with open(filepath, 'r') as file:
             lines = file.readlines()
@@ -65,15 +66,19 @@ def parse_network(filepath: str) -> DroneNetwork:
         sys.exit(1)
 
     for line_num, raw_line in enumerate(lines, start=1):
-        line = raw_line.strip()
         
-        if not line or line.startswith("#") or line.startswith("//"):
+        clean_line = raw_line
+        if '#' in clean_line:
+            clean_line = clean_line.split('#', 1)[0]
+            
+        line = clean_line.strip()
+        
+        if not line:
             continue
 
         lower_line = line.lower()
 
         try:
-            # 1. PARSE DRONES
             if lower_line.startswith("nb_drones") or lower_line.startswith("drones"):
                 parsed = rule_drones.parse_string(line, parse_all=True)
                 
@@ -86,7 +91,6 @@ def parse_network(filepath: str) -> DroneNetwork:
                     sys.exit(1)
                 network.nb_drones = parsed.count
 
-            # 2. PARSE CONNECTIONS
             elif lower_line.startswith("connection") or lower_line.startswith("link"):
                 if network.nb_drones == 0:
                     print(f"Error: Drones must be defined first.\nCause: Found connection before nb_drones on line {line_num}: {raw_line.strip()}", file=sys.stderr)
@@ -111,16 +115,27 @@ def parse_network(filepath: str) -> DroneNetwork:
 
                 conn = Connection(z1, z2)
                 
-                if "attrs" in parsed and "max_link_capacity" in parsed.attrs:
-                    cap = int(parsed.attrs["max_link_capacity"])
-                    if cap <= 0:
-                        print(f"Error: Connection capacity must be > 0.\nCause: Found '{cap}' on line {line_num}: {raw_line.strip()}", file=sys.stderr)
-                        sys.exit(1)
-                    conn.max_link_capacity = cap
+                if "attrs" in parsed:
+                    attrs = parsed.attrs.as_dict()
+                    for k in attrs.keys():
+                        if k != "max_link_capacity":
+                            print(f"Error: Invalid connection attribute '{k}'.\nCause: Only 'max_link_capacity' is allowed. Line {line_num}: {raw_line.strip()}", file=sys.stderr)
+                            sys.exit(1)
+                            
+                    if "max_link_capacity" in attrs:
+                        try:
+                            cap = int(attrs["max_link_capacity"])
+                        except ValueError:
+                            print(f"Error: Connection capacity must be a strict integer.\nCause: Found '{attrs['max_link_capacity']}' on line {line_num}: {raw_line.strip()}", file=sys.stderr)
+                            sys.exit(1)
+                            
+                        if cap <= 0:
+                            print(f"Error: Connection capacity must be > 0.\nCause: Found '{cap}' on line {line_num}: {raw_line.strip()}", file=sys.stderr)
+                            sys.exit(1)
+                        conn.max_link_capacity = cap
                     
                 network.connections.append(conn)
 
-            # 3. PARSE ZONES
             else:
                 if network.nb_drones == 0:
                     print(f"Error: Drones must be defined first.\nCause: Found zone before nb_drones on line {line_num}: {raw_line.strip()}", file=sys.stderr)
@@ -133,16 +148,26 @@ def parse_network(filepath: str) -> DroneNetwork:
                 y = parsed.y
                 
                 attrs = parsed.attrs.as_dict() if "attrs" in parsed else {}
+                
+                for k in attrs.keys():
+                    if k not in ("color", "max_drones", "zone"):
+                        print(f"Error: Invalid zone attribute '{k}' in zone '{name}'.\nCause: Only 'color', 'max_drones', and 'zone' are allowed. Line {line_num}: {raw_line.strip()}", file=sys.stderr)
+                        sys.exit(1)
+
                 color = attrs.get("color", "none").lower()
                 
-                # Assign Hub Roles
                 is_start = keyword == "start_hub" or color == "green"
                 is_end = keyword == "end_hub" or color == "red"
 
                 if is_start or is_end:
                     capacity = 99999
                 else:
-                    capacity = int(attrs.get("max_drones", 9999))
+                    try:
+                        capacity = int(attrs.get("max_drones", 1))
+                    except ValueError:
+                        print(f"Error: Zone capacity must be a strict integer.\nCause: Found '{attrs.get('max_drones')}' on line {line_num}: {raw_line.strip()}", file=sys.stderr)
+                        sys.exit(1)
+                        
                     if capacity <= 0:
                         print(f"Error: Zone '{name}' capacity must be > 0.\nCause: Found '{capacity}' on line {line_num}: {raw_line.strip()}", file=sys.stderr)
                         sys.exit(1)
@@ -163,7 +188,6 @@ def parse_network(filepath: str) -> DroneNetwork:
                     z.hub_role = "end_hub"
                     network.has_end_hub = True
 
-                # Assign & Validate Zone Mechanics
                 if "zone" in attrs:
                     z.zone_type = attrs["zone"].lower()
                 elif color in ("yellow", "brown", "maroon", "darkred"):
@@ -190,7 +214,6 @@ def parse_network(filepath: str) -> DroneNetwork:
             print(f"Error: Invalid data type.\nCause: Expected integer on line {line_num}: {raw_line.strip()}", file=sys.stderr)
             sys.exit(1)
 
-    # --- FINAL INTEGRITY CHECKS ---
     if network.nb_drones <= 0:
         print("Error: Missing or invalid drone configuration.\nCause: Network has 0 drones.", file=sys.stderr)
         sys.exit(1)
