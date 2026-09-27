@@ -1,27 +1,33 @@
+import re
 import sys
-from typing import Dict, List, Optional, Set
+from typing import NoReturn, Optional
+
 import pyparsing as pp
 
 
-ZoneDict = Dict[str, 'Zone']
-ConnectionList = List['Connection']
-
-
 class Zone:
+    """A zone in the drone network."""
+
     def __init__(
-            self, name: str, x: int, y: int, max_drones: int, color: str
-            ) -> None:
+        self,
+        name: str,
+        x: int,
+        y: int,
+        max_drones: int,
+        color: str,
+    ) -> None:
         self.name = name
         self.x = x
         self.y = y
         self.max_drones = max_drones
         self.color = color
-
         self.zone_type = "normal"
         self.hub_role: Optional[str] = None
 
 
 class Connection:
+    """An undirected connection between two zones."""
+
     def __init__(self, zone1: str, zone2: str) -> None:
         self.zone1 = zone1
         self.zone2 = zone2
@@ -29,281 +35,261 @@ class Connection:
 
 
 class DroneNetwork:
-    def __init__(self) -> None:
-        self.nb_drones: int = 0
-        self.zones: ZoneDict = {}
-        self.connections: ConnectionList = []
+    """Parsed map containing zones, connections, and drone count."""
 
+    def __init__(self) -> None:
+        self.nb_drones = 0
+        self.zones: dict[str, Zone] = {}
+        self.connections: list[Connection] = []
         self.has_start_hub = False
         self.has_end_hub = False
 
 
+def _die(message: str) -> NoReturn:
+    """Print a parsing error and stop execution."""
+    print(message, file=sys.stderr)
+    raise SystemExit(1)
+
+
+def _positive_capacity(value: str, line_num: int, label: str) -> int:
+    """Parse a strict positive integer capacity."""
+    if re.fullmatch(r"\+?\d+", value) is None:
+        _die(
+            f"Error: {label} must be a positive integer.\n"
+            f"Cause: Found '{value}' on line {line_num}."
+        )
+    capacity = int(value)
+    if capacity <= 0:
+        _die(
+            f"Error: {label} must be greater than 0.\n"
+            f"Cause: Found '{value}' on line {line_num}."
+        )
+    return capacity
+
+
+def _connection_exists(network: DroneNetwork, z1: str, z2: str) -> bool:
+    """Return True if an undirected connection already exists."""
+    for connection in network.connections:
+        same_order = connection.zone1 == z1 and connection.zone2 == z2
+        reverse_order = connection.zone1 == z2 and connection.zone2 == z1
+        if same_order or reverse_order:
+            return True
+    return False
+
+
 def parse_network(filepath: str) -> DroneNetwork:
+    """Parse a Fly-in map file and return a validated network."""
     network = DroneNetwork()
 
-    integer = pp.Regex(r"[+-]*\d+").set_parse_action(
-        lambda t: ((-1) ** t[0].count('-')) * int(t[0].lstrip('+-'))
+    drone_integer = pp.Regex(r"[+-]*\d+").set_parse_action(
+        lambda tokens: (
+            (-1) ** tokens[0].count("-")
+        ) * int(tokens[0].lstrip("+-"))
+    )
+    coordinate = pp.Regex(r"[+-]?\d+").set_parse_action(
+        lambda tokens: int(tokens[0])
     )
 
-    name_str = pp.Regex(r"[^\s\-\[\]]+")
-    colon = pp.Suppress(pp.Optional(":"))
+    name = pp.Regex(r"[^\s\-\[\]]+")
     required_colon = pp.Suppress(":")
-
     attr_key = pp.Word(pp.alphas + "_")
-    attr_val = pp.Regex(r"[^\s\[\]=]+")
-    attr_pair = pp.Group(attr_key + pp.Suppress("=") + attr_val)
-    attrs_dict = pp.Dict(pp.ZeroOrMore(attr_pair))
+    attr_value = pp.Regex(r"[^\s\[\]=]+")
+    attr_pair = pp.Group(attr_key + pp.Suppress("=") + attr_value)
+    attrs = pp.Dict(pp.ZeroOrMore(attr_pair))
+    metadata = pp.Optional(
+        pp.Suppress("[") + attrs("attrs") + pp.Suppress("]")
+    )
 
-    opt_brackets = pp.Optional(
-        pp.Suppress("[") + attrs_dict("attrs") + pp.Suppress("]"))
-
-    drones_prefix = pp.CaselessKeyword(
-        "nb_drones") | pp.CaselessKeyword("drones")
-
-    rule_drones = drones_prefix + colon + integer("count")
-    rule_conn = (
-        pp.CaselessKeyword("connection") + required_colon + name_str("z1")
-        + pp.Suppress("-") + name_str("z2") + opt_brackets
-        )
-
+    drones_rule = (
+        pp.CaselessKeyword("nb_drones")
+        + required_colon
+        + drone_integer("count")
+    )
+    connection_rule = (
+        pp.CaselessKeyword("connection")
+        + required_colon
+        + name("z1")
+        + pp.Suppress("-")
+        + name("z2")
+        + metadata
+    )
     zone_prefix = (
-        pp.CaselessKeyword("start_hub") |
-        pp.CaselessKeyword("end_hub") |
-        pp.CaselessKeyword("hub")
-        )
-
-    rule_zone = (
+        pp.CaselessKeyword("start_hub")
+        | pp.CaselessKeyword("end_hub")
+        | pp.CaselessKeyword("hub")
+    )
+    zone_rule = (
         zone_prefix("keyword")
-        + required_colon + name_str("name") + integer("x")
-        + integer("y") + opt_brackets
-        )
-
-    valid_zone_types: Set[str] = {
-        "normal", "blocked", "restricted", "priority"
-        }
+        + required_colon
+        + name("name")
+        + coordinate("x")
+        + coordinate("y")
+        + metadata
+    )
+    valid_zone_types = {"normal", "blocked", "restricted", "priority"}
 
     try:
-        with open(filepath, 'r') as file:
-            lines = file.readlines()
-    except FileNotFoundError:
-        print(f"Error: Cannot open map file '{filepath}'", file=sys.stderr)
-        sys.exit(1)
+        with open(filepath, "r", encoding="utf-8") as map_file:
+            lines = map_file.readlines()
+    except OSError as error:
+        _die(f"Error: Cannot open map file '{filepath}'.\nCause: {error}")
+
+    first_content_seen = False
 
     for line_num, raw_line in enumerate(lines, start=1):
-
-        clean_line = raw_line
-        if '#' in clean_line:
-            clean_line = clean_line.split('#', 1)[0]
-
-        line = clean_line.strip()
-
-        if not line:
+        clean_line = raw_line.split("#", 1)[0].strip()
+        if not clean_line:
             continue
 
-        lower_line = line.lower()
-
+        lower_line = clean_line.lower()
         try:
-            if (lower_line.startswith("nb_drones")) or \
-                    (lower_line.startswith("drones")):
+            if not first_content_seen:
+                first_content_seen = True
+                if not lower_line.startswith("nb_drones"):
+                    _die(
+                        "Error: Drone count must be defined first.\n"
+                        f"Cause: Line {line_num}: {raw_line.strip()}"
+                    )
 
-                parsed = rule_drones.parse_string(line, parse_all=True)
-
+            if lower_line.startswith("nb_drones"):
+                parsed = drones_rule.parse_string(clean_line, parse_all=True)
                 if network.nb_drones != 0:
-                    print(
-                        f"Error: Duplicate drone configuration.\nCause: "
-                        f"Drones already defined. Line {line_num}: "
-                        f"{raw_line.strip()}", file=sys.stderr)
-                    sys.exit(1)
+                    _die(
+                        "Error: Duplicate drone configuration.\n"
+                        f"Cause: Line {line_num}: {raw_line.strip()}"
+                    )
+                if parsed["count"] <= 0:
+                    _die(
+                        "Error: Drone count must be positive.\n"
+                        f"Cause: Line {line_num}: {raw_line.strip()}"
+                    )
+                network.nb_drones = int(parsed["count"])
+                continue
 
-                if parsed.count <= 0:
-                    print(
-                        f"Error: Drone count must be a positive integer."
-                        f"\nCause: Found '{parsed.count}' on line {line_num}: "
-                        f"{raw_line.strip()}", file=sys.stderr)
-                    sys.exit(1)
+            if network.nb_drones == 0:
+                _die(
+                    "Error: Drones must be defined first.\n"
+                    f"Cause: Line {line_num}: {raw_line.strip()}"
+                )
 
-                network.nb_drones = parsed.count
-
-            elif lower_line.startswith("connection"):
-                if network.nb_drones == 0:
-                    print(
-                        f"Error: Drones must be defined first.\nCause: "
-                        f"Found connection before nb_drones on line "
-                        f"{line_num}: {raw_line.strip()}", file=sys.stderr)
-                    sys.exit(1)
-
-                parsed = rule_conn.parse_string(line, parse_all=True)
-                z1, z2 = parsed.z1, parsed.z2
-
+            if lower_line.startswith("connection"):
+                parsed = connection_rule.parse_string(
+                    clean_line,
+                    parse_all=True,
+                )
+                z1 = str(parsed["z1"])
+                z2 = str(parsed["z2"])
                 if z1 == z2:
-                    print(
-                        f"Error: A zone cannot connect to itself."
-                        f"\nCause: Self-loop '{z1}-{z2}' on line "
-                        f"{line_num}: {raw_line.strip()}", file=sys.stderr)
-                    sys.exit(1)
-
+                    _die(
+                        "Error: A zone cannot connect to itself.\n"
+                        f"Cause: '{z1}-{z2}' on line {line_num}."
+                    )
                 if z1 not in network.zones or z2 not in network.zones:
-                    print(
-                        f"Error: Zone '{z1}' or '{z2}' not defined "
-                        f"before linking.\nCause: Invalid connection"
-                        f" on line {line_num}: "
-                        f"{raw_line.strip()}", file=sys.stderr)
-                    sys.exit(1)
+                    _die(
+                        "Error: Connections may use only defined zones.\n"
+                        f"Cause: '{z1}-{z2}' on line {line_num}."
+                    )
+                if _connection_exists(network, z1, z2):
+                    _die(
+                        "Error: Duplicate connection.\n"
+                        f"Cause: '{z1}-{z2}' on line {line_num}."
+                    )
 
-                for existing_conn in network.connections:
-                    if (existing_conn.zone1 == z1 and
-                            existing_conn.zone2 == z2) or \
-                       (existing_conn.zone1 == z2 and
-                            existing_conn.zone2 == z1):
-                        print(f"Error: Duplicate connection"
-                              f".\nCause: Link '{z1}-{z2}' already"
-                              f" exists. Line {line_num}: "
-                              f"{raw_line.strip()}", file=sys.stderr)
-                        sys.exit(1)
+                connection = Connection(z1, z2)
+                connection_attrs = (
+                    parsed["attrs"].as_dict() if "attrs" in parsed else {}
+                )
+                invalid = set(connection_attrs) - {"max_link_capacity"}
+                if invalid:
+                    key = sorted(invalid)[0]
+                    _die(
+                        f"Error: Invalid connection attribute '{key}'.\n"
+                        f"Cause: Line {line_num}: {raw_line.strip()}"
+                    )
+                if "max_link_capacity" in connection_attrs:
+                    connection.max_link_capacity = _positive_capacity(
+                        str(connection_attrs["max_link_capacity"]),
+                        line_num,
+                        "Connection capacity",
+                    )
+                network.connections.append(connection)
+                continue
 
-                conn = Connection(z1, z2)
+            parsed = zone_rule.parse_string(clean_line, parse_all=True)
+            keyword = str(parsed["keyword"]).lower()
+            zone_name = str(parsed["name"])
+            zone_attrs = parsed["attrs"].as_dict() if "attrs" in parsed else {}
 
-                if "attrs" in parsed:
-                    attrs = parsed.attrs.as_dict()
-                    for k in attrs.keys():
-                        if k != "max_link_capacity":
-                            print(f"Error: Invalid connection attribute '{k}'."
-                                  f"\nCause: Only 'max_link_capacity' is "
-                                  f"allowed. Line {line_num}: "
-                                  f"{raw_line.strip()}", file=sys.stderr)
-                            sys.exit(1)
+            invalid = set(zone_attrs) - {"color", "max_drones", "zone"}
+            if invalid:
+                key = sorted(invalid)[0]
+                _die(
+                    f"Error: Invalid zone attribute '{key}'.\n"
+                    f"Cause: Line {line_num}: {raw_line.strip()}"
+                )
+            if zone_name in network.zones:
+                _die(
+                    f"Error: Duplicate zone '{zone_name}'.\n"
+                    f"Cause: Line {line_num}: {raw_line.strip()}"
+                )
 
-                    if "max_link_capacity" in attrs:
-                        try:
-                            cap = int(attrs["max_link_capacity"])
-                        except ValueError:
-                            print(f"Error: Connection capacity must "
-                                  f"be a strict integer.\nCause: Found"
-                                  f" '{attrs['max_link_capacity']}' on line "
-                                  f"{line_num}:"
-                                  f" {raw_line.strip()}", file=sys.stderr)
-                            sys.exit(1)
-
-                        if cap <= 0:
-                            print(f"Error: Connection capacity must be > 0."
-                                  f"\nCause: Found '{cap}' on line "
-                                  f"{line_num}: "
-                                  f"{raw_line.strip()}", file=sys.stderr)
-                            sys.exit(1)
-                        conn.max_link_capacity = cap
-
-                network.connections.append(conn)
-
+            is_start = keyword == "start_hub"
+            is_end = keyword == "end_hub"
+            if is_start or is_end:
+                capacity = network.nb_drones
             else:
-                if network.nb_drones == 0:
-                    print(f"Error: Drones must be defined first.\nCause:"
-                          f" Found zone before nb_drones on line {line_num}"
-                          f": {raw_line.strip()}", file=sys.stderr)
-                    sys.exit(1)
+                capacity = _positive_capacity(
+                    str(zone_attrs.get("max_drones", "1")),
+                    line_num,
+                    f"Zone '{zone_name}' capacity",
+                )
 
-                parsed = rule_zone.parse_string(line, parse_all=True)
-                keyword = parsed.keyword.lower()
-                name = parsed.name
-                x = parsed.x
-                y = parsed.y
+            zone = Zone(
+                zone_name,
+                int(parsed["x"]),
+                int(parsed["y"]),
+                capacity,
+                str(zone_attrs.get("color", "none")).lower(),
+            )
+            zone.zone_type = str(zone_attrs.get("zone", "normal")).lower()
+            if zone.zone_type not in valid_zone_types:
+                _die(
+                    f"Error: Invalid zone type '{zone.zone_type}'.\n"
+                    f"Cause: Line {line_num}: {raw_line.strip()}"
+                )
 
-                attrs = parsed.attrs.as_dict() if "attrs" in parsed else {}
+            if is_start:
+                if network.has_start_hub:
+                    _die(
+                        "Error: Multiple start hubs detected.\n"
+                        f"Cause: Line {line_num}: {raw_line.strip()}"
+                    )
+                zone.hub_role = "start_hub"
+                network.has_start_hub = True
+            elif is_end:
+                if network.has_end_hub:
+                    _die(
+                        "Error: Multiple end hubs detected.\n"
+                        f"Cause: Line {line_num}: {raw_line.strip()}"
+                    )
+                zone.hub_role = "end_hub"
+                network.has_end_hub = True
 
-                for k in attrs.keys():
-                    if k not in ("color", "max_drones", "zone"):
-                        print(f"Error: Invalid zone attribute '{k}'"
-                              f" in zone '{name}'.\nCause: Only 'color', "
-                              f"'max_drones', and 'zone' are allowed. Line"
-                              f" {line_num}: "
-                              f"{raw_line.strip()}", file=sys.stderr)
-                        sys.exit(1)
+            network.zones[zone_name] = zone
 
-                color = attrs.get("color", "none").lower()
-
-                is_start = keyword == "start_hub"
-                is_end = keyword == "end_hub"
-
-                if is_start or is_end:
-                    capacity = 99999
-                else:
-                    try:
-                        capacity = int(attrs.get("max_drones", 1))
-                    except ValueError:
-                        print(f"Error: Zone capacity must be a strict integer."
-                              f"\nCause: Found '{attrs.get('max_drones')}' "
-                              f"on line {line_num}: "
-                              f"{raw_line.strip()}", file=sys.stderr)
-                        sys.exit(1)
-
-                    if capacity <= 0:
-                        print(f"Error: Zone '{name}' capacity must be > 0."
-                              f"\nCause: Found '{capacity}' on line "
-                              f"{line_num}: "
-                              f"{raw_line.strip()}", file=sys.stderr)
-                        sys.exit(1)
-
-                z = Zone(name, x, y, capacity, color)
-
-                if is_start:
-                    if network.has_start_hub:
-                        print(f"Error: Multiple start hubs detected."
-                              f"\nCause: Map already has a start hub."
-                              f" Line {line_num}: "
-                              f"{raw_line.strip()}", file=sys.stderr)
-                        sys.exit(1)
-                    z.hub_role = "start_hub"
-                    network.has_start_hub = True
-
-                elif is_end:
-                    if network.has_end_hub:
-                        print(f"Error: Multiple end hubs detected."
-                              f"\nCause: Map already has an end hub."
-                              f" Line {line_num}: "
-                              f"{raw_line.strip()}", file=sys.stderr)
-                        sys.exit(1)
-                    z.hub_role = "end_hub"
-                    network.has_end_hub = True
-
-                if "zone" in attrs:
-                    z.zone_type = attrs["zone"].lower()
-
-                if z.zone_type not in valid_zone_types:
-                    print(
-                        f"Error: Invalid zone type '{z.zone_type}'."
-                        f"\nCause: Must be normal, blocked, restricted,"
-                        f" or priority. Line {line_num}:"
-                        f" {raw_line.strip()}", file=sys.stderr)
-                    sys.exit(1)
-
-                if name in network.zones:
-                    print(f"Error: Duplicate zone '{name}' found.\nCause:"
-                          f" Redefinition on line {line_num}:"
-                          f" {raw_line.strip()}", file=sys.stderr)
-                    sys.exit(1)
-
-                network.zones[name] = z
-
-        except pp.ParseException:
-            print(
-                  f"Error: Invalid syntax.\nCause: Parsing failed on line"
-                  f" {line_num}: {raw_line.strip()}", file=sys.stderr)
-            sys.exit(1)
-        except ValueError:
-            print(f"Error: Invalid data type.\nCause: Expected integer "
-                  f"on line {line_num}: {raw_line.strip()}", file=sys.stderr)
-            sys.exit(1)
+        except pp.ParseBaseException as error:
+            _die(
+                "Error: Invalid syntax.\n"
+                f"Cause: Line {line_num}: {raw_line.strip()} ({error})"
+            )
 
     if network.nb_drones <= 0:
-        print("Error: Missing or invalid drone configuration.\nCause:"
-              " Network has 0 drones.", file=sys.stderr)
-        sys.exit(1)
+        _die("Error: Missing or invalid drone configuration.")
     if len(network.zones) < 2:
-        print("Error: Incomplete network map.\nCause: "
-              "Map must contain at least two zones.", file=sys.stderr)
-        sys.exit(1)
+        _die("Error: Map must contain at least two zones.")
     if not network.has_start_hub or not network.has_end_hub:
-        print("Error: Missing required hubs.\nCause: Map must contain exactly"
-              " one start_hub and exactly one end_hub.", file=sys.stderr)
-        sys.exit(1)
+        _die(
+            "Error: Map must contain exactly one start_hub and one end_hub."
+        )
 
     return network
