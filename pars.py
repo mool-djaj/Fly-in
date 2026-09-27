@@ -1,5 +1,5 @@
 import sys
-from typing import Dict, List, Set
+from typing import Dict, List, Optional, Set
 import pyparsing as pp
 
 
@@ -18,7 +18,7 @@ class Zone:
         self.color = color
 
         self.zone_type = "normal"
-        self.hub_role = None
+        self.hub_role: Optional[str] = None
 
 
 class Connection:
@@ -45,11 +45,12 @@ def parse_network(filepath: str) -> DroneNetwork:
         lambda t: ((-1) ** t[0].count('-')) * int(t[0].lstrip('+-'))
     )
 
-    name_str = pp.Word(pp.printables, excludeChars="-:=[]")
+    name_str = pp.Regex(r"[^\s\-\[\]]+")
     colon = pp.Suppress(pp.Optional(":"))
+    required_colon = pp.Suppress(":")
 
     attr_key = pp.Word(pp.alphas + "_")
-    attr_val = pp.Word(pp.alphanums + "_-+")
+    attr_val = pp.Regex(r"[^\s\[\]=]+")
     attr_pair = pp.Group(attr_key + pp.Suppress("=") + attr_val)
     attrs_dict = pp.Dict(pp.ZeroOrMore(attr_pair))
 
@@ -60,21 +61,20 @@ def parse_network(filepath: str) -> DroneNetwork:
         "nb_drones") | pp.CaselessKeyword("drones")
 
     rule_drones = drones_prefix + colon + integer("count")
-    conn_prefix = pp.CaselessKeyword("connection") | pp.CaselessKeyword("link")
     rule_conn = (
-        conn_prefix + colon + name_str("z1")
+        pp.CaselessKeyword("connection") + required_colon + name_str("z1")
         + pp.Suppress("-") + name_str("z2") + opt_brackets
         )
 
     zone_prefix = (
         pp.CaselessKeyword("start_hub") |
         pp.CaselessKeyword("end_hub") |
-        pp.CaselessKeyword("hub") | pp.CaselessKeyword("zone")
+        pp.CaselessKeyword("hub")
         )
 
     rule_zone = (
         zone_prefix("keyword")
-        + colon + name_str("name") + integer("x")
+        + required_colon + name_str("name") + integer("x")
         + integer("y") + opt_brackets
         )
 
@@ -124,8 +124,7 @@ def parse_network(filepath: str) -> DroneNetwork:
 
                 network.nb_drones = parsed.count
 
-            elif (lower_line.startswith("connection") or
-                  lower_line.startswith("link")):
+            elif lower_line.startswith("connection"):
                 if network.nb_drones == 0:
                     print(
                         f"Error: Drones must be defined first.\nCause: "
@@ -221,8 +220,8 @@ def parse_network(filepath: str) -> DroneNetwork:
 
                 color = attrs.get("color", "none").lower()
 
-                is_start = keyword == "start_hub" or color == "green"
-                is_end = keyword == "end_hub" or color == "red"
+                is_start = keyword == "start_hub"
+                is_end = keyword == "end_hub"
 
                 if is_start or is_end:
                     capacity = 99999
@@ -267,12 +266,6 @@ def parse_network(filepath: str) -> DroneNetwork:
 
                 if "zone" in attrs:
                     z.zone_type = attrs["zone"].lower()
-                elif color in ("yellow", "brown", "maroon", "darkred"):
-                    z.zone_type = "restricted"
-                elif color == "black":
-                    z.zone_type = "blocked"
-                elif color == "gold":
-                    z.zone_type = "priority"
 
                 if z.zone_type not in valid_zone_types:
                     print(

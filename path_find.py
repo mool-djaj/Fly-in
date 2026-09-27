@@ -4,6 +4,7 @@ from pars import DroneNetwork
 
 PathLog = list[tuple[int, str]]
 QueueItem = tuple[float, float, int, str, PathLog]
+PRIORITY_PREFERENCE = 0.000001
 
 
 class Drone:
@@ -31,7 +32,8 @@ class AStar_Engine:
         self.graph: dict[str, list[str]] = {}
 
         self.costs = {
-            "priority": 0.9, "restricted": 2.0, "normal": 1.0, "blocked": 999.0
+            "priority": 1.0, "restricted": 2.0, "normal": 1.0,
+            "blocked": 999.0
             }
 
         for name, zone in self.network.zones.items():
@@ -59,7 +61,9 @@ class AStar_Engine:
         else:
             return f"{z2}-{z1}"
 
-    def is_valid_move(self, zone: str, turn: int, visited: set) -> bool:
+    def is_valid_move(
+            self, zone: str, turn: int,
+            visited: set[tuple[str, int]]) -> bool:
         if (zone, turn) in visited:
             return False
 
@@ -91,6 +95,9 @@ class AStar_Engine:
             if dist > h_scores[current]:
                 continue
 
+            if self.network.zones[current].zone_type == "blocked":
+                continue
+
             for neighbor in self.graph[current]:
                 zone_type = self.network.zones[current].zone_type
                 move_cost = self.costs.get(zone_type, 1.0)
@@ -106,12 +113,16 @@ class AStar_Engine:
             self, start_zone: str, target_zone: str, start_turn: int = 0
             ) -> PathLog:
 
-        initial_f = self.heuristics.get(start_zone, 0.0)
+        initial_f = self.heuristics.get(start_zone, float("inf"))
+
+        if initial_f == float("inf"):
+            return []
+
         queue: list[QueueItem] = [
             (initial_f, 0.0, start_turn, start_zone, [(start_turn, start_zone)]
              )
         ]
-        visited = set()
+        visited: set[tuple[str, int]] = set()
 
         while len(queue) > 0:
             self.nodes_checked += 1
@@ -120,16 +131,14 @@ class AStar_Engine:
             if zone == target_zone:
                 return path
 
-            if turn > 10000:
-                continue
-
-            wait_t = turn + 1
-            if self.is_valid_move(zone, wait_t, visited):
-                visited.add((zone, wait_t))
+            next_turn = turn + 1
+            if self.is_valid_move(zone, next_turn, visited):
+                visited.add((zone, next_turn))
                 new_cost = cost + 1.0
                 new_f = new_cost + self.heuristics.get(zone, 0.0)
                 heapq.heappush(queue, (
-                    new_f, new_cost, wait_t, zone, path + [(wait_t, zone)]))
+                    new_f, new_cost, next_turn, zone, path
+                    + [(next_turn, zone)]))
 
             for n_zone in self.graph[zone]:
                 z_type = self.network.zones[n_zone].zone_type
@@ -139,7 +148,7 @@ class AStar_Engine:
 
                 link_key = self.get_link_key(zone, n_zone)
                 l_capacity = self.link_capacity[link_key]
-                l_booked = self.link_res[link_key].get(turn + 1, 0)
+                l_booked = self.link_res[link_key].get(next_turn, 0)
 
                 if l_booked >= l_capacity:
                     continue
@@ -151,6 +160,9 @@ class AStar_Engine:
 
                 new_cost = cost + self.costs.get(z_type, 1.0)
                 new_f = new_cost + self.heuristics.get(n_zone, 0.0)
+
+                if z_type == "priority":
+                    new_f -= PRIORITY_PREFERENCE
 
                 if self.is_valid_move(n_zone, arrive_t, visited):
                     visited.add((n_zone, arrive_t))
@@ -210,7 +222,6 @@ class AStar_Engine:
                 self.book_path(chosen)
                 all_paths.append(chosen)
             else:
-                raise ValueError(
-                    "Network deadlock: Could not route all drones.")
+                return []
 
         return all_paths
