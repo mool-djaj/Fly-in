@@ -216,3 +216,42 @@ without opening a window.
 - `visualizer.py`: optional Pygame visualizer;
 - `Makefile`: install, run, visual, test, lint, clean, and re targets;
 - `requirements.txt`: Python dependencies.
+
+
+
+"
+Parser
+
+  |
+
+  v
+
+DroneNetwork
+
+  |
+
+  v
+
+AStar
+
+finds paths
+
+  |
+
+  v
+
+Drone
+
+stores its assigned path
+
+  |
+
+  v
+
+Simulator
+
+moves drones turn by turn
+
+and checks capacities
+
+"
