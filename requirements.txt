@@ -1,5 +1,0 @@
-pyparsing
-pytest
-mypy
-flake8
-pygame

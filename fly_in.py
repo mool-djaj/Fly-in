@@ -1,6 +1,7 @@
 import sys
 from pars import Parser , DroneNetwork , ParseError
 from path_find import AStar
+from simulator import Simulator
 
 def main() -> None:
     """Parse a map passed on the command line."""
@@ -15,11 +16,19 @@ def main() -> None:
         network = Parser(sys.argv[1]).parse()
         astar = AStar(network)
         path = astar.find_paths(astar.start_hub , astar.end_hub)
+        sim = Simulator(network,path)
+        link = sim._link_key("start", "A")
+
     except ParseError as error:
         print(error, file=sys.stderr)
         raise SystemExit(1) from error
 
     print(
+        f"{sim._link_available(link,1)}"
+        f"\n{sim._reserve_link(link,1)}\n"
+        f"{sim._link_available(link,1)}"
+        f""
+        f"\n\n"
         f"Path = {path}"
         f"\n"
         f"Parsed successfully: {network.nb_drones} drones, "

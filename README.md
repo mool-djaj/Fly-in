@@ -255,3 +255,7 @@ moves drones turn by turn
 and checks capacities
 
 "
+
+
+
+f = g +  h

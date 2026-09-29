@@ -5,6 +5,7 @@ class Drone:
         self.id = f"D{drone_id}"
         self.path: list[str] = []
         self.position = 0
+        self.schedule: list[tuple[int, str]] = []
 
     def current_zone(self) -> str:
         return self.path[self.position]
