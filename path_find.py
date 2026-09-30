@@ -8,8 +8,6 @@ class AStar:
     def __init__(self, network: DroneNetwork) -> None:
         self.network = network
 
-        self.start_hub: Optional[str] = None
-        self.end_hub: Optional[str] = None
 
         self.costs: dict[str, float] = {
             "priority": 1.0,

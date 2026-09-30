@@ -1,40 +1,67 @@
 import sys
-from pars import Parser , DroneNetwork , ParseError
+
+from pars import Parser
 from path_find import AStar
 from simulator import Simulator
 
-def main() -> None:
-    """Parse a map passed on the command line."""
-    if len(sys.argv) != 2:
-        print(
-            f"Usage: {sys.argv[0]} <map_file>",
-            file=sys.stderr,
+
+class FlyIn:
+    def __init__(self, filename: str) -> None:
+        self.filename = filename
+
+    def run(self) -> None:
+        network = Parser(self.filename).parse()
+
+        astar = AStar(network)
+
+        paths = astar.find_paths(
+            astar.start_hub,
+            astar.end_hub,
         )
+
+        simulator = Simulator(network, paths)
+
+        simulator.plan_drones()
+
+        self._print_turns(simulator)
+
+    def _print_turns(self, simulator: Simulator) -> None:
+        max_turn = 0
+
+        for drone in simulator.drones:
+            if drone.schedule:
+                max_turn = max(
+                    max_turn,
+                    drone.schedule[-1][0],
+                )
+
+        for turn in range(1, max_turn + 1):
+            moves: list[str] = []
+
+            for drone in simulator.drones:
+                if turn >= len(drone.schedule):
+                    continue
+
+                current = drone.schedule[turn][1]
+                previous = drone.schedule[turn - 1][1]
+
+                if current == previous:
+                    continue
+
+                moves.append(
+                    f"{drone.id}-{current}"
+                )
+
+            print(" ".join(moves))
+
+
+def main() -> None:
+    if len(sys.argv) != 2:
+        print(f"Usage: {sys.argv[0]} <map_file>")
         raise SystemExit(1)
 
-    try:
-        network = Parser(sys.argv[1]).parse()
-        astar = AStar(network)
-        path = astar.find_paths(astar.start_hub , astar.end_hub)
-        sim = Simulator(network,path)
-        link = sim._link_key("start", "A")
-
-    except ParseError as error:
-        print(error, file=sys.stderr)
-        raise SystemExit(1) from error
-
-    print(
-        f"{sim._link_available(link,1)}"
-        f"\n{sim._reserve_link(link,1)}\n"
-        f"{sim._link_available(link,1)}"
-        f""
-        f"\n\n"
-        f"Path = {path}"
-        f"\n"
-        f"Parsed successfully: {network.nb_drones} drones, "
-        f"{len(network.zones)} zones, "
-        f"{len(network.connections)} connections."
-    )
+    app = FlyIn(sys.argv[1])
+    app.run()
 
 
 if __name__ == "__main__":
