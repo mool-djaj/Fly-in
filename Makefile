@@ -8,6 +8,9 @@ install:
 run:
 	$(PYTHON) $(SCRIPT) $(CONFIG)
 
+visual:
+	$(PYTHON) $(SCRIPT) $(CONFIG) --visual
+
 test:
 	$(PYTHON) -m pytest -q
 
@@ -21,4 +24,4 @@ clean:
 
 re: clean run
 
-.PHONY: install run test lint clean re
+.PHONY: install run visual test lint clean re

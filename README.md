@@ -1,11 +1,13 @@
+*This project has been created as part of the 42 curriculum by akaarich.*
+
 # Fly-in
 
 ## Description
 
 Fly-in is a drone-routing simulator that finds collision-free paths through a
-network of connected zones. It uses a custom space-time A* search: a search
-state is not only a zone, but a `(zone, turn)` pair. This lets a drone wait in
-place when traffic or capacity constraints temporarily block its route.
+network of connected zones. A custom A* implementation finds a minimum-cost
+route and several alternatives, then a reservation-based scheduler selects the
+earliest valid route for each drone.
 
 The program supports:
 
@@ -15,7 +17,7 @@ The program supports:
 - per-connection `max_link_capacity` capacities;
 - two-turn travel into restricted zones;
 - unlimited sharing of the start and end hubs;
-- comments beginning with `#`;
+- comment lines beginning with `#`;
 - an optional Pygame visualizer.
 
 ## Instructions
@@ -44,13 +46,13 @@ standard output. Errors are printed to standard error.
 Launch the same simulation with the graphical visualizer:
 
 ```bash
-python3 fly_in.py path/to/map.txt
+python3 fly_in.py path/to/map.txt --visual
 ```
 
 or:
 
 ```bash
-make run
+make visual
 ```
 
 Check style and typing:
@@ -72,29 +74,26 @@ self.graph: dict[str, list[str]]
 Each zone name maps to the directly connected zones. No graph/pathfinding
 library is used.
 
-### 2. Space-time states
+### 2. Alternative routes
 
-A state is represented by both a physical zone and a simulation turn:
-
-```text
-(zone, turn)
-```
-
-This allows the same physical zone to be considered again at a later time.
-Waiting is therefore a normal A* transition instead of a special case outside
-the search.
+After A* finds the minimum-cost route, the pathfinder temporarily removes each
+edge of that route and searches again. Unique successful results become route
+alternatives. This gives the scheduler multiple options without importing a
+forbidden graph library.
 
 ### 3. Reservation tables
 
-Already planned drones reserve future capacity in two dictionaries:
+The scheduler plans drones one at a time. Already planned drones reserve future
+capacity in two dictionaries:
 
 ```python
 zone_res[zone][turn] -> number of drones
 link_res[connection][turn] -> number of drones
 ```
 
-A new path is accepted only when its zone and connection use stays within the
-configured capacities.
+A candidate path is accepted only when its zone and connection use stays within
+the configured capacities. When a conflict is temporary, the scheduler inserts
+wait turns before the move.
 
 ### 4. Movement costs
 
@@ -116,8 +115,8 @@ must reach the restricted destination at `t + 2`.
 ### 5. Heuristic
 
 Before routing drones, the program runs a reverse Dijkstra pass from the end
-hub. The result stores the traffic-free minimum movement cost from every zone
-to the destination. A* then uses:
+hub. The result stores the exact traffic-free minimum movement cost from every
+zone to the destination. A* then uses:
 
 ```text
 f = g + h
@@ -126,12 +125,17 @@ f = g + h
 where `g` is the path cost already spent and `h` is the precomputed remaining
 cost.
 
-### 6. Multi-drone planning
+### 6. Multi-drone planning and complexity
 
-Drones are planned one at a time. After one drone receives a valid path, that
-path is written into the reservation tables. The next drone performs A* while
-respecting those reservations. Small start delays are also considered when
-necessary.
+Drones are planned one at a time. Each candidate route is simulated against
+the reservation tables, and the route with the earliest arrival is committed.
+The next drone sees those reservations, so it can use another route or wait.
+
+The reverse Dijkstra heuristic is computed once in `O((V + E) log V)`. One A*
+search is also `O((V + E) log V)` with a binary heap. If the first route has
+`L` links, at most `L` additional A* searches are run. The scheduler then tests
+each discovered route for every drone and stores reservations only for turns
+that are actually used.
 
 ## Parser behavior
 
@@ -147,8 +151,8 @@ The parser validates:
 - valid integer coordinates;
 - valid metadata keys.
 
-The existing custom sign handling for the `nb_drones` numeric field is kept in
-this project. Coordinate and capacity parsing remains strict.
+Coordinates accept signed integers; drone counts and capacities require strict
+positive integers.
 
 ## Simulation output
 
@@ -200,9 +204,13 @@ drone IDs, current turn, and animated drone movement. Controls include:
 - left/right arrows: step through turns;
 - `R`: restart;
 - `1`, `2`, `3`: change theme;
-- `F`: toggle fullscreen;
-- mouse drag: pan;
-- mouse wheel: zoom.
+- `F`: enter or leave fullscreen;
+- `Esc`: return to windowed mode.
+
+The camera automatically fits the complete map in the window. Regular zone
+names use short labels on dense maps, while the start and end hubs keep clear
+foreground labels. The visualizer intentionally uses keyboard controls only;
+there is no mouse dragging, zooming, or hover logic.
 
 The visualizer is optional so automated evaluation can run the mandatory CLI
 without opening a window.
@@ -211,51 +219,27 @@ without opening a window.
 
 - `fly_in.py`: CLI and mandatory simulation output;
 - `pars.py`: parser and network data model;
-- `path_find.py`: custom space-time A* routing engine;
-- `gui_controls.py`: visualizer camera/theme/coordinate helpers;
+- `path_find.py`: custom A* routing and alternative-path generation;
+- `simulator.py`: capacity-aware turn scheduler and reservation tables;
+- `drone.py`: planned drone data model;
 - `visualizer.py`: optional Pygame visualizer;
 - `Makefile`: install, run, visual, test, lint, clean, and re targets;
 - `requirements.txt`: Python dependencies.
 
+## Resources
 
+- [Python `heapq` documentation](https://docs.python.org/3/library/heapq.html)
+  for priority-queue operations;
+- [A* search algorithm](https://en.wikipedia.org/wiki/A*_search_algorithm) for
+  shortest-path concepts and admissible heuristics;
+- [Dijkstra's algorithm](https://en.wikipedia.org/wiki/Dijkstra%27s_algorithm)
+  for the reverse distance heuristic;
+- [pyparsing documentation](https://pyparsing-docs.readthedocs.io/) for the map
+  grammar;
+- [Pygame documentation](https://www.pygame.org/docs/) for rendering, input,
+  and window management.
 
-"
-Parser
-
-  |
-
-  v
-
-DroneNetwork
-
-  |
-
-  v
-
-AStar
-
-finds paths
-
-  |
-
-  v
-
-Drone
-
-stores its assigned path
-
-  |
-
-  v
-
-Simulator
-
-moves drones turn by turn
-
-and checks capacities
-
-"
-
-
-
-f = g +  h
+AI assistance was used to compare the project with the subject, inspect output
+and routing edge cases, improve CLI error handling and the Pygame visualizer,
+and update this documentation. The resulting CLI and visualization behavior
+were then checked locally.

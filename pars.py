@@ -3,9 +3,6 @@ from typing import NoReturn, Optional
 import pyparsing as pp
 
 
-class ParseError(Exception):
-    ...
-
 class Zone:
 
     def __init__(
@@ -112,7 +109,7 @@ class Parser:
 
     def _error(self, message: str, raw_line: str = "") -> NoReturn:
         if raw_line:
-            raise ParseError(
+            raise Exception(
                 f"Error: {message}\n"
                 f"Cause: Line {self.line_num}: {raw_line.strip()}"
             )
