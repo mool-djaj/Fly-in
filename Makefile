@@ -8,9 +8,6 @@ install:
 run:
 	$(PYTHON) $(SCRIPT) $(CONFIG)
 
-visual:
-	$(PYTHON) $(SCRIPT) $(CONFIG) --visual
-
 test:
 	$(PYTHON) -m pytest -q
 

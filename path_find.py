@@ -1,4 +1,6 @@
 import heapq
+from typing import cast
+
 from pars import DroneNetwork
 
 
@@ -7,8 +9,8 @@ class AStar:
     def __init__(self, network: DroneNetwork) -> None:
         self.network = network
         self.heuristic: dict[str, float] = {}
-        start_hub = self.network.start_hub
-        end_hub = self.network.end_hub
+        start_hub = cast(str, self.network.start_hub)
+        end_hub = cast(str, self.network.end_hub)
 
         self.start_hub = start_hub
         self.end_hub = end_hub
