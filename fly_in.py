@@ -1,5 +1,3 @@
-"""Command-line entry point for the Fly-in simulator."""
-
 import sys
 
 from pars import Parser
@@ -8,7 +6,6 @@ from simulator import Simulator
 
 
 class FlyIn:
-    """Run the complete drone simulation."""
 
     def __init__(self, filename: str, visual: bool = False) -> None:
         """Store the input filename and optional visual-mode flag."""

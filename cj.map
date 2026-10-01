@@ -1,16 +1,16 @@
 # Hard Level 3: THE ULTIMATE CHALLENGE - All tricks combined
-nb_drones: 15
+nb_drones: +15
 
 start_hub: start 0 0 [color=green]
 
 # Layer 1: Initial distribution nightmare
-hub: dist_gate1 1 -1 [color=orange]
+hub: dist_gate1 1 -1 [color=pink]
 hub: dist_gate2 1 1 [color=orange]
 hub: dist_gate3 1 0 [color=orange]
 
 # Layer 2: Dead end maze with loops
 hub: maze_trap1 1 2 [color=red]
-hub: maze_trap2 2 2 [color=red max_drones=3]
+hub: maze_trap2 2 2 [color= red max_drones=+3]
 hub: maze_loop1 2 1 [color=purple max_drones=3]
 hub: maze_loop2 3 1 [color=purple max_drones=3]
 hub: maze_loop3 4 1 [color=purple max_drones=3]
@@ -20,7 +20,7 @@ hub: maze_correct 2 0 [color=blue max_drones=3]
 # Layer 3: Capacity nightmare section
 hub: bottleneck1 3 0 [color=yellow max_drones=2]
 hub: bottleneck2 4 0 [color=yellow max_drones=1]
-hub: overflow1 3 -1 [zone=restricted color=orange max_drones=3]
+hub: overflow1 3 -1 [zone=restricted color=pink max_drones=3]
 hub: overflow2 4 -1 [zone=restricted color=orange max_drones=3]
 
 # Layer 4: Priority puzzle with traps

@@ -1,7 +1,10 @@
-import sys
-from typing import NoReturn, Optional
+from typing import NoReturn
+
 import pyparsing as pp
 
+
+class ParseError(Exception):
+    pass
 
 class Zone:
 
@@ -12,9 +15,10 @@ class Zone:
         y: int,
         zone_type: str = "normal",
         color: str = "none",
-        max_drones: Optional[int] = 1,
-        hub_role: Optional[str] = None,
+        max_drones: int | None = 1,
+        hub_role: str | None = None,
     ) -> None:
+        """Create a zone."""
         self.name = name
         self.x = x
         self.y = y
@@ -32,6 +36,7 @@ class Connection:
         zone2: str,
         max_link_capacity: int = 1,
     ) -> None:
+        """Create a connection."""
         self.zone1 = zone1
         self.zone2 = zone2
         self.max_link_capacity = max_link_capacity
@@ -43,8 +48,8 @@ class DroneNetwork:
         self.nb_drones = 0
         self.zones: dict[str, Zone] = {}
         self.connections: list[Connection] = []
-        self.start_hub: Optional[str] = None
-        self.end_hub: Optional[str] = None
+        self.start_hub: str | None = None
+        self.end_hub: str | None = None
 
 
 class Parser:
@@ -61,8 +66,7 @@ class Parser:
         self.network = DroneNetwork()
         self.line_num = 0
 
-        integer = pp.common.signed_integer
-        coordinate = pp.common.signed_integer
+        self.integer = pp.common.signed_integer
         name = pp.Regex(r"[^\s\-\[\]]+")
 
         attr_key = pp.Word(pp.alphas + "_")
@@ -80,7 +84,7 @@ class Parser:
         self.drones_rule = (
             pp.Keyword("nb_drones")
             + pp.Suppress(":")
-            + integer("count")
+            + self.integer("count")
         )
 
         self.connection_rule = (
@@ -102,71 +106,104 @@ class Parser:
             zone_prefix("keyword")
             + pp.Suppress(":")
             + name("name")
-            + coordinate("x")
-            + coordinate("y")
+            + self.integer("x")
+            + self.integer("y")
             + metadata
         )
 
-    def _error(self, message: str, raw_line: str = "") -> NoReturn:
+    def _error(
+        self,
+        message: str,
+        raw_line: str = "",
+    ) -> NoReturn:
+        """Raise a clear parser error."""
         if raw_line:
-            raise Exception(
+            raise ParseError(
                 f"Error: {message}\n"
-                f"Cause: Line {self.line_num}: {raw_line.strip()}"
+                f"Cause: Line {self.line_num}: "
+                f"{raw_line.strip()}"
             )
-        raise ParseError(f"Error: {message}")
 
-    def _positive_int(self, value: str, label: str) -> int:
-        """Convert a value to a strict positive integer."""
-        if not value.isdigit():
+        raise ParseError(
+            f"Error: {message}\n"
+            "Cause: End of file."
+        )
+
+    def _positive_int(
+        self,
+        value: str,
+        label: str,
+        raw_line: str,
+    ) -> int:
+        try:
+            parsed = self.integer.parse_string(
+                value,
+                parse_all=True,
+            )
+        except pp.ParseBaseException:
             self._error(
-                f"{label} must be a positive integer."
+                f"{label} must be an integer.",
+                raw_line,
             )
 
-        number = int(value)
+        number = int(parsed[0])
+
         if number <= 0:
-            self._error(f"{label} must be greater than 0.")
+            self._error(
+                f"{label} must be greater than 0.",
+                raw_line,
+            )
 
         return number
 
-    def _connection_exists(self, z1: str, z2: str) -> bool:
-        """Return True if the undirected connection already exists."""
+    def _connection_exists(
+        self,
+        zone1: str,
+        zone2: str,
+    ) -> bool:
         for connection in self.network.connections:
             same_order = (
-                connection.zone1 == z1
-                and connection.zone2 == z2
+                connection.zone1 == zone1
+                and connection.zone2 == zone2
             )
             reverse_order = (
-                connection.zone1 == z2
-                and connection.zone2 == z1
+                connection.zone1 == zone2
+                and connection.zone2 == zone1
             )
+
             if same_order or reverse_order:
                 return True
+
         return False
 
     def _get_attrs(
         self,
         parsed: pp.ParseResults,
     ) -> dict[str, str]:
-        """Return parsed metadata as a normal string dictionary."""
         if "attrs" not in parsed:
             return {}
 
         raw_attrs = parsed["attrs"].as_dict()
+
         return {
             str(key): str(value)
             for key, value in raw_attrs.items()
         }
 
-    def _parse_drones(self, clean_line: str, raw_line: str) -> None:
-        """Parse the drone-count line."""
+    def _parse_drones(
+        self,
+        clean_line: str,
+        raw_line: str,
+    ) -> None:
         try:
             parsed = self.drones_rule.parse_string(
                 clean_line,
                 parse_all=True,
             )
-        except pp.ParseBaseException as error:
+        except pp.ParseBaseException:
             self._error(
-                f"Invalid drone configuration ({error}).",
+                "Invalid drone configuration. Expected "
+                "'nb_drones: <positive_integer>'.",
                 raw_line,
             )
 
@@ -176,10 +213,11 @@ class Parser:
                 raw_line,
             )
 
-        count = int(str(parsed["count"]))
+        count = int(parsed["count"])
+
         if count <= 0:
             self._error(
-                "Drone count must be positive.",
+                "Drone count must be greater than 0.",
                 raw_line,
             )
 
@@ -190,41 +228,44 @@ class Parser:
         clean_line: str,
         raw_line: str,
     ) -> None:
-        """Parse and validate one connection."""
         try:
             parsed = self.connection_rule.parse_string(
                 clean_line,
                 parse_all=True,
             )
-        except pp.ParseBaseException as error:
+        except pp.ParseBaseException:
             self._error(
-                f"Invalid connection syntax ({error}).",
+                "Invalid connection syntax. Expected "
+                "'connection: <zone1>-<zone2> [metadata]'.",
                 raw_line,
             )
 
-        z1 = str(parsed["z1"])
-        z2 = str(parsed["z2"])
+        zone1 = str(parsed["z1"])
+        zone2 = str(parsed["z2"])
 
-        if z1 not in self.network.zones:
+        if zone1 not in self.network.zones:
             self._error(
-                f"Unknown zone '{z1}' in connection.",
+                f"Unknown zone '{zone1}' in connection. "
+                "Connections may only use previously defined zones.",
                 raw_line,
             )
 
-        if z2 not in self.network.zones:
+        if zone2 not in self.network.zones:
             self._error(
-                f"Unknown zone '{z2}' in connection.",
+                f"Unknown zone '{zone2}' in connection. "
+                "Connections may only use previously defined zones.",
                 raw_line,
             )
 
-        if self._connection_exists(z1, z2):
+        if self._connection_exists(zone1, zone2):
             self._error(
-                f"Duplicate connection '{z1}-{z2}'.",
+                f"Duplicate connection '{zone1}-{zone2}'.",
                 raw_line,
             )
 
         attrs = self._get_attrs(parsed)
         invalid = set(attrs) - {"max_link_capacity"}
+
         if invalid:
             key = sorted(invalid)[0]
             self._error(
@@ -233,33 +274,47 @@ class Parser:
             )
 
         capacity = 1
+
         if "max_link_capacity" in attrs:
             capacity = self._positive_int(
                 attrs["max_link_capacity"],
                 "Connection capacity",
+                raw_line,
             )
 
-        connection = Connection(
-            z1,
-            z2,
-            capacity,
+        self.network.connections.append(
+            Connection(
+                zone1,
+                zone2,
+                capacity,
+            )
         )
-        self.network.connections.append(connection)
 
     def _parse_zone(
         self,
         clean_line: str,
         raw_line: str,
     ) -> None:
-        """Parse and validate one zone."""
+        if ":" in clean_line:
+            body = clean_line.split(":", 1)[1].strip()
+            if body:
+                zone_name = body.split()[0]
+                if "-" in zone_name:
+                    self._error(
+                        f"Invalid zone name '{zone_name}': "
+                        "dashes are not allowed.",
+                        raw_line,
+                    )
+
         try:
             parsed = self.zone_rule.parse_string(
                 clean_line,
                 parse_all=True,
             )
-        except pp.ParseBaseException as error:
+        except pp.ParseBaseException:
             self._error(
-                f"Invalid zone syntax ({error}).",
+                "Invalid zone syntax. Expected "
+                "'<type>: <name> <integer> <integer> [metadata]'.",
                 raw_line,
             )
 
@@ -272,6 +327,7 @@ class Parser:
             "max_drones",
             "zone",
         }
+
         if invalid:
             key = sorted(invalid)[0]
             self._error(
@@ -286,25 +342,29 @@ class Parser:
             )
 
         zone_type = attrs.get("zone", "normal")
+
         if zone_type not in self.VALID_ZONE_TYPES:
             self._error(
-                f"Invalid zone type '{zone_type}'.",
+                f"Invalid zone type '{zone_type}'. "
+                "Expected normal, blocked, restricted, or priority.",
                 raw_line,
             )
 
         is_start = keyword == "start_hub"
         is_end = keyword == "end_hub"
 
-        max_drones: Optional[int]
+        max_drones: int | None
+
         if is_start or is_end:
             max_drones = None
         else:
             max_drones = self._positive_int(
                 attrs.get("max_drones", "1"),
                 f"Zone '{zone_name}' capacity",
+                raw_line,
             )
 
-        hub_role: Optional[str] = None
+        hub_role: str | None = None
 
         if is_start:
             if self.network.start_hub is not None:
@@ -312,6 +372,7 @@ class Parser:
                     "Multiple start hubs detected.",
                     raw_line,
                 )
+
             self.network.start_hub = zone_name
             hub_role = "start_hub"
 
@@ -321,29 +382,30 @@ class Parser:
                     "Multiple end hubs detected.",
                     raw_line,
                 )
+
             self.network.end_hub = zone_name
             hub_role = "end_hub"
 
-        zone = Zone(
+        self.network.zones[zone_name] = Zone(
             name=zone_name,
-            x=int(str(parsed["x"])),
-            y=int(str(parsed["y"])),
+            x=int(parsed["x"]),
+            y=int(parsed["y"]),
             zone_type=zone_type,
             color=attrs.get("color", "none"),
             max_drones=max_drones,
             hub_role=hub_role,
         )
 
-        self.network.zones[zone_name] = zone
-
     def _parse_line(
         self,
         clean_line: str,
         raw_line: str,
     ) -> None:
-        """Dispatch one non-empty input line to the correct parser."""
         if clean_line.startswith("nb_drones"):
-            self._parse_drones(clean_line, raw_line)
+            self._parse_drones(
+                clean_line,
+                raw_line,
+            )
             return
 
         if self.network.nb_drones == 0:
@@ -353,32 +415,80 @@ class Parser:
             )
 
         if clean_line.startswith("connection"):
-            self._parse_connection(clean_line, raw_line)
+            self._parse_connection(
+                clean_line,
+                raw_line,
+            )
             return
 
-        self._parse_zone(clean_line, raw_line)
+        if clean_line.startswith(
+            ("hub", "start_hub", "end_hub")
+        ):
+            self._parse_zone(
+                clean_line,
+                raw_line,
+            )
+            return
+
+        self._error(
+            "Unknown line type.",
+            raw_line,
+        )
 
     def _validate_final_network(self) -> None:
-        """Validate requirements that need the full parsed file."""
         if self.network.nb_drones <= 0:
             self._error(
                 "Missing or invalid drone configuration."
             )
 
         if self.network.start_hub is None:
-            self._error("Map is missing a start_hub.")
+            self._error(
+                "Map is missing a start_hub."
+            )
 
         if self.network.end_hub is None:
-            self._error("Map is missing an end_hub.")
+            self._error(
+                "Map is missing an end_hub."
+            )
 
     def parse(self) -> DroneNetwork:
+        first_content_seen = False
+
         try:
             with open(
                 self.filepath,
                 "r",
                 encoding="utf-8",
             ) as map_file:
-                lines = map_file.readlines()
+                for self.line_num, raw_line in enumerate(
+                    map_file,
+                    start=1,
+                ):
+                    clean_line = raw_line.split(
+                        "#",
+                        1,
+                    )[0].strip()
+
+                    if not clean_line:
+                        continue
+
+                    if not first_content_seen:
+                        first_content_seen = True
+
+                        if not clean_line.startswith(
+                            "nb_drones"
+                        ):
+                            self._error(
+                                "The first definition must be "
+                                "'nb_drones'.",
+                                raw_line,
+                            )
+
+                    self._parse_line(
+                        clean_line,
+                        raw_line,
+                    )
+
         except OSError as error:
             raise ParseError(
                 f"Error: Cannot open map file "
@@ -386,27 +496,5 @@ class Parser:
                 f"Cause: {error}"
             ) from error
 
-        first_content_seen = False
-
-        for self.line_num, raw_line in enumerate(
-            lines,
-            start=1,
-        ):
-            clean_line = raw_line.split("#", 1)[0].strip()
-
-            if not clean_line:
-                continue
-
-            if not first_content_seen:
-                first_content_seen = True
-                if not clean_line.startswith("nb_drones"):
-                    self._error(
-                        "Drone count must be defined first.",
-                        raw_line,
-                    )
-
-            self._parse_line(clean_line, raw_line)
-
         self._validate_final_network()
         return self.network
-

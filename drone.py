@@ -5,4 +5,3 @@ class Drone:
         self.id = f"D{drone_id}"
         self.path: list[str] = []
         self.schedule: list[tuple[int, str]] = []
-
