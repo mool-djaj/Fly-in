@@ -1,3 +1,5 @@
+"""Draw the drone simulation in a Pygame window."""
+
 import math
 import os
 from typing import Any, Optional
@@ -7,6 +9,7 @@ from pars import DroneNetwork, Zone
 
 
 class Visualizer:
+    """Display the network and animate drone movements."""
 
     WIDTH = 1080
     HEIGHT = 720
@@ -61,6 +64,7 @@ class Visualizer:
         network: DroneNetwork,
         drones: list[Drone],
     ) -> None:
+        """Prepare the visual state for a planned simulation."""
         self.network = network
         self.drones = drones
         self.pg: Any = None
@@ -89,9 +93,11 @@ class Visualizer:
 
     @staticmethod
     def _link_key(first: str, second: str) -> str:
+        """Return one shared name for a two-way connection."""
         return f"{first}-{second}" if first < second else f"{second}-{first}"
 
     def _build_link_points(self) -> dict[str, tuple[float, float]]:
+        """Find the middle point of every connection."""
         points: dict[str, tuple[float, float]] = {}
         for connection in self.network.connections:
             first = self.network.zones[connection.zone1]
@@ -105,6 +111,7 @@ class Visualizer:
     def _world_bounds(
         self,
     ) -> tuple[tuple[float, float], tuple[float, float]]:
+        """Find the center and size of the complete map."""
         coordinates = [
             (float(zone.x), float(zone.y))
             for zone in self.network.zones.values()
@@ -121,6 +128,7 @@ class Visualizer:
         )
 
     def _to_screen(self, point: tuple[float, float]) -> tuple[int, int]:
+        """Convert a map position into a screen position."""
         width, height = self.screen.get_size()
         graph_width = max(width - self.PANEL_WIDTH - 60, 100)
         graph_height = max(height - 100, 100)
@@ -136,6 +144,7 @@ class Visualizer:
         )
 
     def _location(self, name: str) -> Optional[tuple[float, float]]:
+        """Return the map position of a zone or connection."""
         if name in self.network.zones:
             zone = self.network.zones[name]
             return float(zone.x), float(zone.y)
@@ -146,6 +155,7 @@ class Visualizer:
         drone: Drone,
         simulation_time: float,
     ) -> Optional[tuple[float, float]]:
+        """Calculate a drone position during an animated turn."""
         if not drone.schedule or simulation_time > drone.schedule[-1][0]:
             return None
         start_turn = int(math.floor(simulation_time))
@@ -164,6 +174,7 @@ class Visualizer:
 
     @staticmethod
     def _short_name(name: str) -> str:
+        """Make a short label for a zone name."""
         parts = name.split("_")
         if len(parts) == 1:
             if len(name) <= 6:
@@ -179,6 +190,7 @@ class Visualizer:
         return f"{letters}{digits}"
 
     def _zone_color(self, zone: Zone) -> tuple[int, int, int]:
+        """Choose the display color of a zone."""
         if zone.color.lower() != "none":
             try:
                 color = self.pg.Color(zone.color)
@@ -188,6 +200,7 @@ class Visualizer:
         return self.TYPE_COLORS.get(zone.zone_type, self.TYPE_COLORS["normal"])
 
     def _draw_network(self) -> None:
+        """Draw every connection and zone."""
         theme = self.THEMES[self.theme_number]
         for connection in self.network.connections:
             first = self.network.zones[connection.zone1]
@@ -236,6 +249,7 @@ class Visualizer:
                 )
 
     def _draw_drones(self, simulation_time: float) -> None:
+        """Draw each active drone at its current position."""
         groups: dict[tuple[int, int], list[Drone]] = {}
         for drone in self.drones:
             position = self._drone_position(drone, simulation_time)
@@ -264,6 +278,7 @@ class Visualizer:
                 self.screen.blit(label, label.get_rect(center=drone_point))
 
     def _draw_hubs(self) -> None:
+        """Draw labels for the start and end hubs."""
         theme = self.THEMES[self.theme_number]
         for zone in self.network.zones.values():
             if zone.hub_role is None:
@@ -282,6 +297,7 @@ class Visualizer:
             )
 
     def _draw_panel(self, simulation_time: float) -> None:
+        """Draw simulation details and keyboard controls."""
         theme = self.THEMES[self.theme_number]
         _, height = self.screen.get_size()
         self.pg.draw.rect(
@@ -330,6 +346,7 @@ class Visualizer:
             self.screen.blit(label, (20, 370 + index * 25))
 
     def _draw(self) -> None:
+        """Draw one complete animation frame."""
         simulation_time = self.current_turn + self.turn_progress
         theme = self.THEMES[self.theme_number]
         self.screen.fill(theme["background"])
@@ -340,6 +357,7 @@ class Visualizer:
         self.pg.display.flip()
 
     def _handle_key(self, key: int) -> None:
+        """Handle one keyboard command."""
         if key == self.pg.K_SPACE:
             if self.current_turn >= self.max_turn:
                 self.current_turn = 0
@@ -366,6 +384,7 @@ class Visualizer:
             self._set_window()
 
     def _advance(self, elapsed_seconds: float) -> None:
+        """Move the animation clock forward."""
         if not self.playing or self.current_turn >= self.max_turn:
             return
         self.turn_progress += elapsed_seconds / self.TURN_SECONDS
@@ -378,6 +397,7 @@ class Visualizer:
                 self.playing = False
 
     def _set_window(self) -> None:
+        """Create a window in normal or fullscreen mode."""
         if self.fullscreen:
             self.screen = self.pg.display.set_mode((0, 0), self.pg.FULLSCREEN)
         else:
@@ -387,6 +407,7 @@ class Visualizer:
             )
 
     def run(self) -> None:
+        """Open the window and run the animation loop."""
         os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "hide"
         try:
             import pygame

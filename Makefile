@@ -8,6 +8,12 @@ install:
 run:
 	$(PYTHON) $(SCRIPT) $(CONFIG)
 
+debug:
+	$(PYTHON) -m pdb $(SCRIPT) $(CONFIG)
+
+visual:
+	$(PYTHON) $(SCRIPT) $(CONFIG)
+
 test:
 	$(PYTHON) -m pytest -q
 
@@ -21,4 +27,4 @@ clean:
 
 re: clean run
 
-.PHONY: install run visual test lint clean re
+.PHONY: install run debug visual test lint clean re

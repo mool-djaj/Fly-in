@@ -1,13 +1,18 @@
+"""Read and validate Fly-in map files."""
+
 from typing import NoReturn
 
 import pyparsing as pp
 
 
 class ParseError(Exception):
+    """Report an invalid map file."""
+
     pass
 
 
 class Zone:
+    """Store the settings of one zone."""
 
     def __init__(
         self,
@@ -30,6 +35,7 @@ class Zone:
 
 
 class Connection:
+    """Store a connection between two zones."""
 
     def __init__(
         self,
@@ -44,8 +50,10 @@ class Connection:
 
 
 class DroneNetwork:
+    """Store all parsed zones, connections, and drones."""
 
     def __init__(self) -> None:
+        """Create an empty drone network."""
         self.nb_drones = 0
         self.zones: dict[str, Zone] = {}
         self.connections: list[Connection] = []
@@ -54,6 +62,7 @@ class DroneNetwork:
 
 
 class Parser:
+    """Parse a map file and check its rules."""
 
     VALID_ZONE_TYPES = {
         "normal",
@@ -63,12 +72,13 @@ class Parser:
     }
 
     def __init__(self, filepath: str) -> None:
+        """Prepare the grammar for the given map file."""
         self.filepath = filepath
         self.network = DroneNetwork()
         self.line_num = 0
 
         self.integer = pp.common.signed_integer
-        name = pp.Regex(r"[^\s\-\[\]]+")
+        name = pp.Regex(r"[^\s-]+")
 
         attr_key = pp.Word(pp.alphas + "_")
         attr_value = pp.Regex(r"[^\s\[\]=]+")
@@ -136,6 +146,7 @@ class Parser:
         label: str,
         raw_line: str,
     ) -> int:
+        """Read a positive integer or report a clear error."""
         try:
             parsed = self.integer.parse_string(
                 value,
@@ -162,6 +173,7 @@ class Parser:
         zone1: str,
         zone2: str,
     ) -> bool:
+        """Check whether two zones are already connected."""
         for connection in self.network.connections:
             same_order = (
                 connection.zone1 == zone1
@@ -181,6 +193,7 @@ class Parser:
         self,
         parsed: pp.ParseResults,
     ) -> dict[str, str]:
+        """Return metadata values from a parsed line."""
         if "attrs" not in parsed:
             return {}
 
@@ -196,6 +209,7 @@ class Parser:
         clean_line: str,
         raw_line: str,
     ) -> None:
+        """Read the number of drones."""
         try:
             parsed = self.drones_rule.parse_string(
                 clean_line,
@@ -229,6 +243,7 @@ class Parser:
         clean_line: str,
         raw_line: str,
     ) -> None:
+        """Read and validate one connection."""
         try:
             parsed = self.connection_rule.parse_string(
                 clean_line,
@@ -296,6 +311,7 @@ class Parser:
         clean_line: str,
         raw_line: str,
     ) -> None:
+        """Read and validate one zone."""
         if ":" in clean_line:
             body = clean_line.split(":", 1)[1].strip()
             if body:
@@ -402,6 +418,7 @@ class Parser:
         clean_line: str,
         raw_line: str,
     ) -> None:
+        """Send one map line to the correct parser."""
         if clean_line.startswith("nb_drones"):
             self._parse_drones(
                 clean_line,
@@ -437,6 +454,7 @@ class Parser:
         )
 
     def _validate_final_network(self) -> None:
+        """Check that the map has all required settings."""
         if self.network.nb_drones <= 0:
             self._error(
                 "Missing or invalid drone configuration."
@@ -453,13 +471,13 @@ class Parser:
             )
 
     def parse(self) -> DroneNetwork:
+        """Parse the complete file and return its network."""
         first_content_seen = False
 
         try:
             with open(
                 self.filepath,
                 "r",
-                encoding="utf-8",
             ) as map_file:
                 for self.line_num, raw_line in enumerate(
                     map_file,

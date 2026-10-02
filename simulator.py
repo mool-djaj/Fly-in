@@ -1,13 +1,18 @@
+"""Plan safe movements for all drones."""
+
 from drone import Drone
 from pars import DroneNetwork
 
 
 class Simulator:
+    """Schedule drones while respecting all capacities."""
+
     def __init__(
         self,
         network: DroneNetwork,
         paths: list[list[str]],
     ) -> None:
+        """Prepare the network paths and reservation tables."""
         self.network = network
         self.paths = paths
         self.drones: list[Drone] = []
@@ -28,11 +33,13 @@ class Simulator:
             self.link_capacity[link] = connection.max_link_capacity
 
     def _link_key(self, zone1: str, zone2: str) -> str:
+        """Return one shared name for a two-way connection."""
         if zone1 < zone2:
             return f"{zone1}-{zone2}"
         return f"{zone2}-{zone1}"
 
     def _zone_available(self, zone_name: str, turn: int) -> bool:
+        """Check whether a zone has space on a turn."""
         zone = self.network.zones[zone_name]
 
         if zone.max_drones is None:
@@ -42,14 +49,17 @@ class Simulator:
         return reserved < zone.max_drones
 
     def _link_available(self, link: str, turn: int) -> bool:
+        """Check whether a connection has space on a turn."""
         reserved = self.link_res[link].get(turn, 0)
         return reserved < self.link_capacity[link]
 
     def _reserve_zone(self, zone_name: str, turn: int) -> None:
+        """Reserve one place in a zone on a turn."""
         reserved = self.zone_res[zone_name].get(turn, 0)
         self.zone_res[zone_name][turn] = reserved + 1
 
     def _reserve_link(self, link: str, turn: int) -> None:
+        """Reserve one place on a connection for a turn."""
         reserved = self.link_res[link].get(turn, 0)
         self.link_res[link][turn] = reserved + 1
 
@@ -57,6 +67,7 @@ class Simulator:
         self,
         path: list[str],
     ) -> list[tuple[int, str]]:
+        """Build a safe turn-by-turn schedule for one path."""
         if not path:
             return []
 
@@ -107,6 +118,7 @@ class Simulator:
         return schedule
 
     def _plan_drone(self, drone: Drone) -> bool:
+        """Choose and reserve the earliest route for one drone."""
         best_path: list[str] = []
         best_schedule: list[tuple[int, str]] = []
 
@@ -152,6 +164,7 @@ class Simulator:
         return True
 
     def plan_drones(self) -> list[Drone]:
+        """Plan every drone and return the completed list."""
         for drone_id in range(1, self.network.nb_drones + 1):
             drone = Drone(drone_id)
 

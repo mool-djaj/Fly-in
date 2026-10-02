@@ -1,3 +1,5 @@
+"""Run the Fly-in drone simulation."""
+
 import sys
 from pars import Parser
 from path_find import AStar
@@ -6,11 +8,14 @@ from visualizer import Visualizer
 
 
 class FlyIn:
+    """Load a map and run its drone simulation."""
 
     def __init__(self, filename: str) -> None:
+        """Store the path of the map to simulate."""
         self.filename = filename
 
     def run(self) -> None:
+        """Parse the map, plan the drones, and show the result."""
         network = Parser(self.filename).parse()
         astar = AStar(network)
 
@@ -27,6 +32,7 @@ class FlyIn:
         Visualizer(network, drones).run()
 
     def _print_moves(self, simulator: Simulator) -> None:
+        """Print every drone movement one turn at a time."""
         schedules = {
             drone.id: dict(drone.schedule)
             for drone in simulator.drones
@@ -48,6 +54,7 @@ class FlyIn:
 
 
 def main() -> None:
+    """Read the command line and start the simulation."""
     if len(sys.argv) != 2:
         print(
             f"Usage: {sys.argv[0]} <map_file>",

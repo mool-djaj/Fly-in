@@ -1,3 +1,5 @@
+"""Find paths through the drone network."""
+
 import heapq
 from typing import cast
 
@@ -5,8 +7,10 @@ from pars import DroneNetwork
 
 
 class AStar:
+    """Find low-cost paths with the A-star algorithm."""
 
     def __init__(self, network: DroneNetwork) -> None:
+        """Build a searchable graph from the drone network."""
         self.network = network
         self.heuristic: dict[str, float] = {}
         start_hub = cast(str, self.network.start_hub)
@@ -33,6 +37,7 @@ class AStar:
         self.heuristic = self._heuristic(self.end_hub)
 
     def _heuristic(self, end: str) -> dict[str, float]:
+        """Calculate the remaining cost from each zone to the end."""
         h_score: dict[str, float] = {
             zone: float("inf")
             for zone in self.graph
@@ -75,6 +80,7 @@ class AStar:
         end: str,
         ignored_edges: set[tuple[str, str]],
     ) -> list[str]:
+        """Find one path while skipping the given connections."""
 
         open_set: list[tuple[float, float, str, list[str]]] = []
         g_score: dict[str, float] = {}
@@ -128,6 +134,7 @@ class AStar:
         start: str,
         end: str,
     ) -> list[list[str]]:
+        """Find the best path and useful alternative paths."""
 
         paths: list[list[str]] = []
 

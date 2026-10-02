@@ -40,19 +40,12 @@ or, with the included sample map:
 make run
 ```
 
-The normal command prints only the required turn-by-turn simulation output to
+The command prints the required turn-by-turn simulation output to
 standard output. Errors are printed to standard error.
-
-Launch the same simulation with the graphical visualizer:
-
-```bash
-python3 fly_in.py path/to/map.txt --visual
-```
-
-or:
+simulation with the graphical visualizer:
 
 ```bash
-make visual
+python3 fly_in.py path/to/map.txt
 ```
 
 Check style and typing:
@@ -240,6 +233,4 @@ without opening a window.
   and window management.
 
 AI assistance was used to compare the project with the subject, inspect output
-and routing edge cases, improve CLI error handling and the Pygame visualizer,
-and update this documentation. The resulting CLI and visualization behavior
-were then checked locally.
+and routing edge cases.
